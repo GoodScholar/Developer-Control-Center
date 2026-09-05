@@ -6,6 +6,7 @@ export interface StoredProject {
 
 export interface ProjectRegistry {
   list(): StoredProject[]
+  get(projectId: string): StoredProject | null
   insert(project: StoredProject): void
   remove(projectId: string): void
   close(): void

@@ -26,15 +26,14 @@ export class SqliteProjectRegistry implements ProjectRegistry {
       .prepare('SELECT id, name, root_path FROM projects ORDER BY rowid')
       .all()
 
-    return rows.map((row) => {
-      const { id, name, root_path: rootPath } = row
-      if (typeof id !== 'string' || typeof name !== 'string' || typeof rootPath !== 'string') {
-        throw new TypeError(
-          'Invalid project registry row: id, name, and root_path must be strings.'
-        )
-      }
-      return { id, name, rootPath }
-    })
+    return rows.map(projectFromRow)
+  }
+
+  get(projectId: string): StoredProject | null {
+    const row = this.database
+      .prepare('SELECT id, name, root_path FROM projects WHERE id = ?')
+      .get(projectId)
+    return row === undefined ? null : projectFromRow(row)
   }
 
   insert(project: StoredProject): void {
@@ -50,4 +49,12 @@ export class SqliteProjectRegistry implements ProjectRegistry {
   close(): void {
     this.database.close()
   }
+}
+
+function projectFromRow(row: Record<string, unknown>): StoredProject {
+  const { id, name, root_path: rootPath } = row
+  if (typeof id !== 'string' || typeof name !== 'string' || typeof rootPath !== 'string') {
+    throw new TypeError('Invalid project registry row: id, name, and root_path must be strings.')
+  }
+  return { id, name, rootPath }
 }
