@@ -3,7 +3,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, test, vi } from 'vitest'
 import { ControlCenter } from './control-center'
-import { projectConfigurationAlreadyExists } from './errors'
+import {
+  invalidProjectId,
+  projectConfigurationAlreadyExists,
+  projectDirectoryUnavailable,
+  projectNotFound
+} from './errors'
 import type { HostRuntime } from './host-runtime'
 import { NodeHostRuntime } from './node-host-runtime'
 import type { ProjectRegistry } from './project-registry'
@@ -50,6 +55,16 @@ function configuredProjectControlCenter(): { center: ControlCenter; host: TestHo
     ['/stored/project', { canonicalPath: '/canonical/project', name: 'sample-project' }]
   ]))
   return { center: new ControlCenter(registry, host), host }
+}
+
+function trustedProjectControlCenter(hostRuntime: HostRuntime): ControlCenter {
+  const project = {
+    id: 'stored-project-id',
+    name: 'sample-project',
+    rootPath: '/stored/project'
+  }
+  const registry = { get: () => project } as unknown as ProjectRegistry
+  return new ControlCenter(registry, hostRuntime)
 }
 
 test('registers a project and restores it from local metadata', async () => {
@@ -265,4 +280,83 @@ test('queries the registration and directory again for every create', async () =
   expect(get).toHaveBeenCalledTimes(2)
   expect(inspect).toHaveBeenCalledTimes(2)
   expect(host.createdProjectConfigurations).toHaveLength(2)
+})
+
+test('binds a directory error to the registered project id', async () => {
+  const center = trustedProjectControlCenter({
+    async inspectProjectDirectory() {
+      throw projectDirectoryUnavailable('/stored/project')
+    },
+    async createProjectConfiguration() {}
+  })
+
+  await expect(center.previewProjectConfiguration('renderer-project-id', configurationDraft)).rejects.toMatchObject({
+    detail: {
+      code: 'PROJECT_DIRECTORY_UNAVAILABLE',
+      resource: { kind: 'project', id: 'stored-project-id' }
+    }
+  })
+})
+
+test('binds a configuration error to the registered project id without leaking draft data', async () => {
+  const center = trustedProjectControlCenter(new TestHostRuntime(new Map([
+    ['/stored/project', { canonicalPath: '/canonical/project', name: 'sample-project' }]
+  ])))
+  const invalidDraft = structuredClone(configurationDraft)
+  invalidDraft.service.workingDirectory = '../outside'
+
+  const error = await center.previewProjectConfiguration('renderer-project-id', invalidDraft).then(
+    () => { throw new Error('Expected configuration preview to reject.') },
+    (error: unknown) => error
+  )
+
+  expect((error as { detail: unknown }).detail).toEqual({
+    code: 'CONFIG_PATH_OUTSIDE_PROJECT',
+    resource: { kind: 'project_configuration', projectId: 'stored-project-id' },
+    fieldPath: '$.service.workingDirectory',
+    message: 'The path leaves the project root.',
+    nextAction: 'Choose a path inside the project root.'
+  })
+})
+
+test('binds a creation error to the registered project id', async () => {
+  const center = trustedProjectControlCenter({
+    async inspectProjectDirectory() {
+      return { canonicalPath: '/canonical/project', name: 'sample-project' }
+    },
+    async createProjectConfiguration() {
+      throw projectConfigurationAlreadyExists()
+    }
+  })
+
+  await expect(center.createProjectConfiguration('renderer-project-id', configurationDraft)).rejects.toMatchObject({
+    detail: {
+      code: 'PROJECT_CONFIGURATION_ALREADY_EXISTS',
+      resource: { kind: 'project_configuration', projectId: 'stored-project-id' }
+    }
+  })
+})
+
+test('preserves an invalid project id returned by the host runtime', async () => {
+  const expected = invalidProjectId()
+  const center = trustedProjectControlCenter({
+    async inspectProjectDirectory() {
+      throw expected
+    },
+    async createProjectConfiguration() {}
+  })
+
+  await expect(center.previewProjectConfiguration('renderer-project-id', configurationDraft)).rejects.toBe(expected)
+})
+
+test('preserves a project-not-found error returned by the host runtime', async () => {
+  const expected = projectNotFound('different-project-id')
+  const center = trustedProjectControlCenter({
+    async inspectProjectDirectory() {
+      throw expected
+    },
+    async createProjectConfiguration() {}
+  })
+
+  await expect(center.previewProjectConfiguration('renderer-project-id', configurationDraft)).rejects.toBe(expected)
 })

@@ -59,7 +59,7 @@ export class ControlCenter {
     try {
       await this.hostRuntime.createProjectConfiguration(prepared.rootPath, prepared.preview.source)
     } catch (error) {
-      if (error instanceof ControlCenterError) throw withProjectId(error, projectId)
+      if (error instanceof ControlCenterError) throw withProjectId(error, prepared.projectId)
       throw error
     }
     return { relativePath: '.devcontrol.toml' }
@@ -93,7 +93,7 @@ export class ControlCenter {
   private async prepareProjectConfiguration(
     projectId: string,
     draft: ProjectConfigurationDraft
-  ): Promise<{ rootPath: string; preview: ProjectConfigurationPreview }> {
+  ): Promise<{ projectId: string; rootPath: string; preview: ProjectConfigurationPreview }> {
     if (typeof projectId !== 'string' || projectId.trim().length === 0) throw invalidProjectId()
     const project = this.projectRegistry.get(projectId)
     if (project === null) throw projectNotFound(projectId)
@@ -101,16 +101,17 @@ export class ControlCenter {
     try {
       directory = await this.hostRuntime.inspectProjectDirectory(project.rootPath)
     } catch (error) {
-      if (error instanceof ControlCenterError) throw withProjectId(error, projectId)
+      if (error instanceof ControlCenterError) throw withProjectId(error, project.id)
       throw error
     }
     try {
       return {
+        projectId: project.id,
         rootPath: directory.canonicalPath,
         preview: buildProjectConfigurationPreview(draft)
       }
     } catch (error) {
-      if (error instanceof ControlCenterError) throw withProjectId(error, projectId)
+      if (error instanceof ControlCenterError) throw withProjectId(error, project.id)
       throw error
     }
   }

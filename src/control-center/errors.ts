@@ -72,7 +72,7 @@ export function withProjectId(error: ControlCenterError, projectId: string): Con
       resource: { kind: 'project_configuration', projectId }
     })
   }
-  if (error.detail.resource.kind === 'project') {
+  if (error.detail.code === 'PROJECT_DIRECTORY_UNAVAILABLE') {
     return new ControlCenterError({
       ...error.detail,
       resource: { kind: 'project', id: projectId }
