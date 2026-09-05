@@ -42,12 +42,47 @@ test('registers, previews and creates a parseable project configuration', async 
     await page.getByLabel('Program').fill('pnpm')
     await page.getByRole('button', { name: 'Add argument' }).click()
     await page.getByLabel('Argument 1', { exact: true }).fill('dev')
+    await page.getByLabel('Working directory').fill('packages/web')
+    await page.getByRole('button', { name: 'Add environment value' }).click()
+    await page.getByLabel('Environment key 1', { exact: true }).fill('SAFE_KEY')
+    await page.getByLabel('Environment value 1', { exact: true }).fill('safe-value')
+    await page.getByRole('button', { name: 'Add environment file' }).click()
+    await page.getByLabel('Environment file 1', { exact: true }).fill('.env.local')
+    await page.getByLabel('Run through shell').check()
+    await page.getByRole('button', { name: 'macOS overrides' }).click()
+    await page.getByLabel('macOS Program', { exact: true }).fill('pnpm-macos')
+    await page.getByRole('button', { name: 'Add macOS argument' }).click()
+    await page.getByLabel('macOS Argument 1', { exact: true }).fill('dev:macos')
+    await page.getByRole('button', { name: 'Add macOS environment value' }).click()
+    await page.getByLabel('macOS Environment key 1', { exact: true }).fill('MAC_ONLY')
+    await page.getByLabel('macOS Environment value 1', { exact: true }).fill('1')
+    await page.getByRole('button', { name: 'Windows overrides' }).click()
+    await page.getByLabel('Windows Program', { exact: true }).fill('pnpm-windows')
+    await page.getByRole('button', { name: 'Add Windows argument' }).click()
+    await page.getByLabel('Windows Argument 1', { exact: true }).fill('dev:windows')
+    await page.getByRole('button', { name: 'Add Windows environment value' }).click()
+    await page.getByLabel('Windows Environment key 1', { exact: true }).fill('WINDOWS_ONLY')
+    await page.getByLabel('Windows Environment value 1', { exact: true }).fill('1')
     await page.getByRole('button', { name: 'Preview configuration' }).click()
     await expect(page.getByLabel('Project configuration preview')).toContainText('schema_version = 1')
     await page.getByRole('button', { name: 'Create configuration' }).click()
     await expect(page.getByText('.devcontrol.toml created')).toBeVisible()
     const source = await readFile(join(projectRoot, '.devcontrol.toml'), 'utf8')
-    expect(parseProjectConfiguration(source).services.web).toMatchObject({ program: 'pnpm', args: ['dev'], shell: false })
+    expect(parseProjectConfiguration(source)).toEqual({
+      schemaVersion: 1,
+      services: {
+        web: {
+          program: 'pnpm',
+          args: ['dev'],
+          workingDirectory: 'packages/web',
+          shell: true,
+          envFiles: ['.env.local'],
+          env: { SAFE_KEY: 'safe-value' },
+          macos: { program: 'pnpm-macos', args: ['dev:macos'], env: { MAC_ONLY: '1' } },
+          windows: { program: 'pnpm-windows', args: ['dev:windows'], env: { WINDOWS_ONLY: '1' } }
+        }
+      }
+    })
     await app.close()
     app = await launchApp(userData)
     page = await app.firstWindow()
