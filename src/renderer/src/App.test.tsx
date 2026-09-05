@@ -101,3 +101,29 @@ test('keeps the project list when an action fails and explains recovery', async 
   expect(screen.getByRole('alert')).toHaveTextContent(error.nextAction)
   expect(screen.getByText('sample-project')).toBeVisible()
 })
+
+test('offers configuration only for an available project', async () => {
+  const availableProject: ProjectSnapshot = {
+    id: 'project-available',
+    name: 'sample-project',
+    rootPath: '/projects/sample-project',
+    availability: 'available'
+  }
+  const missingProject: ProjectSnapshot = {
+    id: 'project-missing',
+    name: 'missing-project',
+    rootPath: '/projects/missing-project',
+    availability: 'missing',
+    problem: {
+      code: 'PROJECT_DIRECTORY_UNAVAILABLE',
+      resource: { kind: 'project', id: 'project-missing' },
+      message: 'The project directory is unavailable.',
+      nextAction: 'Reconnect the drive and try again.'
+    }
+  }
+
+  render(<App desktop={createDesktopApi(availableProject, [availableProject, missingProject])} />)
+
+  expect(await screen.findByRole('button', { name: 'Configure sample-project' })).toBeVisible()
+  expect(screen.queryByRole('button', { name: `Configure ${missingProject.name}` })).not.toBeInTheDocument()
+})

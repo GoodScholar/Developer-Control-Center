@@ -24,7 +24,10 @@ body {
 .app-header,
 .section-heading,
 .project-row,
-.project-title-row {
+.project-title-row,
+.project-actions,
+.configuration-actions,
+.checkbox-field {
   display: flex;
   align-items: center;
 }
@@ -75,6 +78,11 @@ button {
   font: inherit;
   font-weight: 650;
   cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .primary-action {
@@ -153,6 +161,12 @@ h2 {
   min-width: 0;
 }
 
+.project-actions,
+.configuration-actions {
+  flex: 0 0 auto;
+  gap: 0.75rem;
+}
+
 .project-title-row {
   flex-wrap: wrap;
   gap: 0.75rem;
@@ -199,6 +213,160 @@ h3 {
   line-height: 1.45;
 }
 
+.configuration-page .app-header {
+  align-items: flex-start;
+}
+
+.configuration-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(18rem, 1fr);
+  gap: clamp(1.5rem, 4vw, 3rem);
+  margin-top: clamp(2rem, 5vw, 3.5rem);
+}
+
+.configuration-layout > section,
+.configuration-help,
+.configuration-success {
+  min-width: 0;
+  border: 1px solid light-dark(#dfe2e7, #343841);
+  border-radius: 0.875rem;
+  background: light-dark(#ffffff, #202329);
+  box-shadow: 0 0.5rem 1.5rem light-dark(rgb(22 29 37 / 7%), rgb(0 0 0 / 20%));
+}
+
+.configuration-layout > section {
+  padding: clamp(1.25rem, 3vw, 2rem);
+}
+
+.configuration-help {
+  align-self: start;
+  padding: 1.25rem;
+}
+
+.configuration-help p {
+  margin-top: 0.5rem;
+}
+
+.configuration-success {
+  margin-top: 2rem;
+  padding: clamp(1.5rem, 4vw, 2.5rem);
+}
+
+form {
+  display: grid;
+  gap: 0.65rem;
+}
+
+label,
+legend {
+  font-weight: 650;
+}
+
+input {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.75rem;
+  border: 1px solid light-dark(#c6cbd3, #535963);
+  border-radius: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  background: light-dark(#ffffff, #17191d);
+  color: inherit;
+  font: inherit;
+}
+
+input::placeholder {
+  color: light-dark(#646b75, #aeb5bf);
+}
+
+input[type="checkbox"] {
+  width: 1rem;
+  min-height: 1rem;
+  margin: 0;
+  accent-color: light-dark(#245d55, #8cc9bd);
+}
+
+form > p {
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+}
+
+fieldset {
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
+  margin: 0.75rem 0;
+  padding: 1rem;
+  border: 1px solid light-dark(#dfe2e7, #343841);
+  border-radius: 0.625rem;
+}
+
+legend {
+  padding: 0 0.25rem;
+}
+
+.dynamic-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+}
+
+.dynamic-row > label,
+.dynamic-row > input,
+.dynamic-row > .field-error {
+  grid-column: 1;
+}
+
+.dynamic-row > button {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+}
+
+.environment-row > button {
+  grid-row: 1 / span 6;
+}
+
+.field-error {
+  color: light-dark(#8a3d15, #f2bf94);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.checkbox-field {
+  gap: 0.55rem;
+  margin-top: 0.5rem;
+}
+
+.platform-overrides {
+  margin-top: 0.75rem;
+}
+
+.platform-overrides > div {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+}
+
+.configuration-actions {
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+pre {
+  max-width: 100%;
+  overflow: auto;
+  margin: 1rem 0;
+  padding: 1rem;
+  border-radius: 0.625rem;
+  background: light-dark(#edf1f4, #17191d);
+  color: inherit;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .action-error {
   margin-top: 1.5rem;
   padding: 0.9rem 1rem;
@@ -217,6 +385,26 @@ h3 {
 
   .primary-action {
     align-self: flex-start;
+  }
+
+  .configuration-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .project-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .dynamic-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dynamic-row > button,
+  .environment-row > button {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
   }
 }
 
