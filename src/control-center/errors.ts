@@ -27,3 +27,21 @@ export function invalidProjectId(): ControlCenterError {
     nextAction: 'Refresh the project list and try again.'
   })
 }
+
+export function configurationError(
+  code: string,
+  fieldPath: string | undefined,
+  message: string,
+  nextAction: string,
+  projectId?: string
+): ControlCenterError {
+  return new ControlCenterError({
+    code,
+    resource: projectId
+      ? { kind: 'project_configuration', projectId }
+      : { kind: 'project_configuration' },
+    ...(fieldPath === undefined ? {} : { fieldPath }),
+    message,
+    nextAction
+  })
+}

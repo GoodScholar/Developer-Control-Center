@@ -8,9 +8,74 @@ export type ProjectSnapshot =
   | (ProjectIdentity & { availability: 'available' })
   | (ProjectIdentity & { availability: 'missing'; problem: ActionableError })
 
+export type PlatformName = 'macos' | 'windows'
+
+export interface EnvironmentVariableDraft {
+  key: string
+  value: string
+}
+
+export interface PlatformOverrideDraft {
+  program?: string
+  args?: string[]
+  env?: EnvironmentVariableDraft[]
+}
+
+export interface DevelopmentServiceDraft {
+  id: string
+  program: string
+  args: string[]
+  workingDirectory: string
+  shell: boolean
+  envFiles: string[]
+  env: EnvironmentVariableDraft[]
+  macos?: PlatformOverrideDraft
+  windows?: PlatformOverrideDraft
+}
+
+export interface ProjectConfigurationDraft {
+  service: DevelopmentServiceDraft
+}
+
+export interface PlatformOverride {
+  program?: string
+  args?: readonly string[]
+  env?: Readonly<Record<string, string>>
+}
+
+export interface DevelopmentServiceConfiguration {
+  program: string
+  args: readonly string[]
+  workingDirectory: string
+  shell: boolean
+  envFiles: readonly string[]
+  env: Readonly<Record<string, string>>
+  macos?: PlatformOverride
+  windows?: PlatformOverride
+}
+
+export interface ProjectConfigurationV1 {
+  schemaVersion: 1
+  services: Readonly<Record<string, DevelopmentServiceConfiguration>>
+}
+
+export interface ProjectConfigurationPreview {
+  source: string
+}
+
+export interface ProjectConfigurationCreated {
+  relativePath: '.devcontrol.toml'
+}
+
+export type ConfigFieldPath = string
+
 export interface ActionableError {
   code: string
-  resource: { kind: 'project'; id?: string } | { kind: 'application' }
+  resource:
+    | { kind: 'project'; id?: string }
+    | { kind: 'project_configuration'; projectId?: string }
+    | { kind: 'application' }
+  fieldPath?: ConfigFieldPath
   message: string
   nextAction: string
 }
