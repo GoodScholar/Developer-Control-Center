@@ -117,6 +117,8 @@ WATCH_MODE = "poll"
 
 顶层只允许 `schema_version` 与 `services`。schema v1 不接受未知字段，以免拼写错误被静默忽略并在执行阶段产生意外行为。
 
+本设计发生在首个公开 Alpha 之前。票据 02 先实现 schema v1 的单服务创建切片；票据 06—08 会在首次公开发布前补齐同一 schema v1 的依赖、健康检查和预期端口字段。中间开发提交不构成已发布协议兼容承诺；从票据 14 发布首个 Alpha 起，任何会被既有严格解析器拒绝的字段扩展都必须提升 `schema_version`，不得在已发布的 v1 中静默追加。
+
 ### 4.3 服务 ID
 
 - 长度为 1—64 个 ASCII 字符。
@@ -129,7 +131,7 @@ WATCH_MODE = "poll"
 
 | 字段 | 类型 | 必需/默认 | 规则 |
 | --- | --- | --- | --- |
-| `program` | string | 必需 | 去除首尾空白后必须非空；不得含 NUL、CR 或 LF。它是结构化可执行程序名或项目内相对程序路径，不是完整 Shell 命令。 |
+| `program` | string | 必需 | 去除首尾空白后必须非空，规范化结果使用去除后的值；不得含 NUL、CR 或 LF。它是结构化可执行程序名或项目内相对程序路径，不是完整 Shell 命令。 |
 | `args` | array of string | 可选，默认 `[]` | 每项是一个独立参数；允许空字符串和空白，因为它们可能具有命令语义，但不得含 NUL。 |
 | `working_directory` | string | 可选，默认 `"."` | 必须满足下述可移植相对路径规则；`"."` 表示项目根目录。 |
 | `shell` | boolean | 可选，默认 `false` | 只有 TOML boolean `true` 才启用 Shell；字符串或数字不作真值转换。本票据生成器总是显式写出该字段。 |
@@ -152,6 +154,10 @@ WATCH_MODE = "poll"
 - 校验是纯词法校验，不解析符号链接、不检查文件是否存在，也不读取文件内容。
 
 这组规则使配置文本本身无法表达项目根目录外的路径。票据 05 真正访问文件时仍必须从已复核的项目根目录安全解析路径，并再次执行根目录包含检查；本票据的词法校验不替代使用时检查。
+
+`program` 另按“程序名或相对程序路径”校验：不含 `/` 或 `\\` 时视为 PATH 中的程序名，例如 `pnpm`、`pnpm.cmd`；一旦包含路径分隔符或匹配绝对路径、盘符、UNC、`~`、URL 形式，就必须按上述可移植相对路径规则处理，因此 `scripts/dev-server` 合法，而 `/usr/bin/node`、`C:\\node.exe`、`../bin/server` 与 `./scripts/server` 均拒绝。平台覆盖中的 `program` 使用相同规则。
+
+`args` 是传给程序的无解释字符串数组。参数可能包含 URL、绝对路径文本或特定工具语法，配置模块无法可靠判断其语义，因此“绝对路径拒绝”只适用于 `working_directory`、`env_files` 和作为路径表达的 `program`，不扫描或改写参数内容。
 
 ### 4.6 平台覆盖合并语义
 
@@ -537,7 +543,7 @@ type ConfigurationWorkflowState =
 | 配置模块：解析 | 完整合法示例 | 返回规范化 `ProjectConfigurationV1`。 |
 | 配置模块：解析 | TOML 语法错误、缺失/未知/错误类型版本 | 返回固定 code/fieldPath，不含源片段。 |
 | 配置模块：schema | 未知顶层、服务或覆盖字段 | `CONFIG_UNKNOWN_FIELD` 或 `CONFIG_PLATFORM_OVERRIDE_FIELD_INVALID`。 |
-| 配置模块：ID | 非法、重复或不稳定 ID 格式 | 可操作字段错误。 |
+| 配置模块：ID | 非法或不稳定 ID 格式 | 可操作字段错误；重复 TOML key 作为脱敏后的语法错误处理。 |
 | 配置模块：路径 | POSIX 绝对、盘符、UNC、URL、反斜杠、`..`、空段 | 精确映射 absolute/outside/invalid；合法嵌套路径通过。 |
 | 配置模块：环境 | 非法 key、重复 key、非字符串值、重复 env file | 精确字段路径；任何错误文本不含 value。 |
 | 配置模块：Shell | 缺失、false、true、字符串 true | 缺失规范化为 false；只有 boolean true 启用；字符串拒绝。 |
