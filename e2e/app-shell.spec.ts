@@ -22,9 +22,19 @@ test('opens an empty project list', async ({}, testInfo) => {
     })).toEqual({
       hasRequire: false,
       hasProcess: false,
-      desktopKeys: [],
-      projectKeys: []
+      desktopKeys: ['projects'],
+      projectKeys: ['add', 'list', 'remove']
     })
+
+    const originalUrl = page.url()
+    await page.evaluate(() => {
+      window.location.href = 'https://example.com/'
+    })
+    await expect.poll(() => page.url()).toBe(originalUrl)
+
+    const windowCount = app.windows().length
+    await page.evaluate(() => window.open('https://example.com/', '_blank'))
+    await expect.poll(() => app.windows().length).toBe(windowCount)
   } finally {
     await app.close()
   }

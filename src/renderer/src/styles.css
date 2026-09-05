@@ -1,8 +1,8 @@
 :root {
   color-scheme: light dark;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: light-dark(#ffffff, #1e1e1e);
-  color: light-dark(#1f1f1f, #f2f2f2);
+  background: light-dark(#f4f5f7, #17191d);
+  color: light-dark(#17191d, #f1f3f5);
 }
 
 * {
@@ -15,9 +15,23 @@ body {
   min-height: 100vh;
 }
 
-main {
-  max-width: 60rem;
+.app-shell {
+  width: min(100%, 76rem);
+  margin: 0 auto;
   padding: clamp(2rem, 5vw, 4rem);
+}
+
+.app-header,
+.section-heading,
+.project-row,
+.project-title-row {
+  display: flex;
+  align-items: center;
+}
+
+.app-header {
+  justify-content: space-between;
+  gap: 2rem;
 }
 
 h1 {
@@ -27,11 +41,183 @@ h1 {
   line-height: 1.2;
 }
 
+p,
+h2,
+h3 {
+  margin: 0;
+}
+
 p {
-  margin: 1rem 0 0;
-  color: light-dark(#5f6368, #b8b8b8);
+  color: light-dark(#5c626b, #b8bec8);
   font-size: 1rem;
   line-height: 1.5;
+}
+
+.eyebrow {
+  margin-bottom: 0.5rem;
+  color: light-dark(#38615b, #8cc9bd);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.introduction {
+  max-width: 42rem;
+  margin-top: 0.75rem;
+}
+
+button {
+  min-height: 2.75rem;
+  border: 1px solid transparent;
+  border-radius: 0.625rem;
+  padding: 0.7rem 1rem;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.primary-action {
+  flex: 0 0 auto;
+  background: light-dark(#245d55, #8cc9bd);
+  color: light-dark(#ffffff, #10231f);
+}
+
+.secondary-action {
+  flex: 0 0 auto;
+  border-color: light-dark(#d2d6dc, #424750);
+  background: transparent;
+  color: inherit;
+}
+
+.projects {
+  margin-top: clamp(2.5rem, 6vw, 5rem);
+  overflow: hidden;
+  border: 1px solid light-dark(#dfe2e7, #343841);
+  border-radius: 0.875rem;
+  background: light-dark(#ffffff, #202329);
+  box-shadow: 0 0.5rem 1.5rem light-dark(rgb(22 29 37 / 7%), rgb(0 0 0 / 20%));
+}
+
+.section-heading {
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid light-dark(#e5e7eb, #343841);
+}
+
+h2 {
+  font-size: 1.125rem;
+  line-height: 1.35;
+}
+
+.project-count {
+  display: grid;
+  min-width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: 999px;
+  background: light-dark(#edf1f4, #30343b);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.empty-state {
+  padding: clamp(2rem, 6vw, 4.5rem) 1.5rem;
+  text-align: center;
+}
+
+.empty-title {
+  margin-bottom: 0.35rem;
+  color: inherit;
+  font-weight: 700;
+}
+
+.project-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.project-row {
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1.25rem 1.5rem;
+}
+
+.project-row + .project-row {
+  border-top: 1px solid light-dark(#e5e7eb, #343841);
+}
+
+.project-summary {
+  min-width: 0;
+}
+
+.project-title-row {
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+h3 {
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.status {
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.status-available {
+  background: light-dark(#dcefe9, #1f4039);
+  color: light-dark(#1d5a4f, #a7ddd2);
+}
+
+.status-missing {
+  background: light-dark(#f8e7d2, #4a3520);
+  color: light-dark(#784c17, #f1c58e);
+}
+
+.project-path {
+  overflow-wrap: anywhere;
+  margin-top: 0.35rem;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.875rem;
+}
+
+.action-error,
+.project-problem {
+  display: grid;
+  gap: 0.25rem;
+  border: 1px solid light-dark(#d9a462, #79552d);
+  border-radius: 0.625rem;
+  background: light-dark(#fff6e9, #33281c);
+  color: light-dark(#683f11, #f0c58d);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.action-error {
+  margin-top: 1.5rem;
+  padding: 0.9rem 1rem;
+}
+
+.project-problem {
+  margin-top: 0.85rem;
+  padding: 0.75rem;
+}
+
+@media (max-width: 48rem) {
+  .app-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .primary-action {
+    align-self: flex-start;
+  }
 }
 
 :focus-visible {

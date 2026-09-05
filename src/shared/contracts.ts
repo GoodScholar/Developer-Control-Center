@@ -14,3 +14,15 @@ export interface ActionableError {
   message: string
   nextAction: string
 }
+
+export type ActionResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; error: ActionableError }
+
+export interface DesktopApi {
+  projects: {
+    list(): Promise<ActionResult<ProjectSnapshot[]>>
+    add(): Promise<ActionResult<ProjectSnapshot | null>>
+    remove(projectId: string): Promise<ActionResult<null>>
+  }
+}
