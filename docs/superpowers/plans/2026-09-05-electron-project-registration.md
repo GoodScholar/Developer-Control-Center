@@ -83,7 +83,7 @@ ADR-0005 使用以下完整内容：
 
 ## Decision
 
-Developer Control Center 使用 Electron 承载 React、TypeScript 和 Vite 界面，并由 Electron 主进程直接托管不依赖 Electron 的 TypeScript Control Center 模块。Node Host Runtime 负责进程、文件、端口和网络能力；Renderer 保持沙盒化，只能通过受限 Preload 接口操作项目，以单一 TypeScript 技术栈替代原 Tauri 与 Rust 方案。
+Developer Control Center 使用 Electron 承载 React、TypeScript 和 Vite 界面，并由 Electron 主进程直接托管不依赖 Electron 的 TypeScript Control Center 模块。Node Host Runtime 负责进程、文件、端口和网络能力；Renderer 保持沙盒化，只能通过受限 Preload 接口操作项目，以单一 TypeScript 技术栈替代原有跨语言桌面方案。
 
 ## Consequences
 
@@ -159,7 +159,7 @@ Developer Control Center 是工作名称。产品为 Apache-2.0 开源项目；�
 
 - [ ] **Step 4: 修订规格**
 
-逐项替换有效需求：Tauri 2 改为 Electron，Rust 核心改为 TypeScript Control Center，Rust Host Runtime 改为 Node Host Runtime，Tauri 通信改为 Main/Preload/Renderer 通信，并删除 Cargo 或 Rust 工具链要求。增加 Renderer 沙盒、上下文隔离、关闭 Node 集成及窄 Preload 接口约束，不改变产品行为、阻塞边、验收数量或任何票据的当前 `ready-for-agent` Triage 状态。现有票据使用技术中立的 Host Runtime 术语，无需为了迁移而改写。
+逐项替换有效架构需求：Tauri 2 改为 Electron，Rust 核心改为 TypeScript Control Center，Rust Host Runtime 改为 Node Host Runtime，Tauri 通信改为 Main/Preload/Renderer 通信，并删除 Cargo 或 Rust 构建工具链要求。增加 Renderer 沙盒、上下文隔离、关闭 Node 集成及窄 Preload 接口约束，不改变产品行为、阻塞边、验收数量或任何票据的当前 `ready-for-agent` Triage 状态。环境安装器的 Out of Scope 清单属于技术中立的产品范围，必须继续包含 Rust；现有票据也无需为了迁移而改写。
 
 - [ ] **Step 5: 验证迁移**
 
@@ -167,7 +167,7 @@ Developer Control Center 是工作名称。产品为 Apache-2.0 开源项目；�
 rg -n 'Tauri|Rust 核心|Rust Host Runtime|Cargo' .scratch/developer-control-center-mvp docs/adr
 ~~~
 
-Expected: 仅允许命中带 `superseded by ADR-0005` 的 ADR-0003，以及 ADR-0005 中说明被替代方案的历史句子；有效规格和票据无命中。
+Expected: 仅允许命中带 `superseded by ADR-0005` 的 ADR-0003；有效规格、ADR-0005 和票据无命中。
 
 ~~~bash
 rg -n 'Electron|TypeScript Control Center|Node Host Runtime' .scratch/developer-control-center-mvp/spec.md .scratch/developer-control-center-mvp/issues docs/adr/0005-electron-typescript-desktop-architecture.md
