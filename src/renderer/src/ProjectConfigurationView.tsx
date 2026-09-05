@@ -81,7 +81,6 @@ export function ProjectConfigurationView({ desktop, project, onBack }: ProjectCo
   }
 
   const stateError = state.kind === 'editing' || state.kind === 'previewing' ? state.error : undefined
-  const errorControl = stateError ? controlFor(stateError.fieldPath) : null
   useEffect(() => {
     if (!stateError) return
     ;(controlFor(stateError.fieldPath) ?? alertRef.current)?.focus()
@@ -95,7 +94,7 @@ export function ProjectConfigurationView({ desktop, project, onBack }: ProjectCo
     <header className="app-header"><div><p className="eyebrow">Project configuration</p><h1>{project.name}</h1></div></header>
     <div className="configuration-layout">
       {state.kind === 'editing' ? <section>
-        {state.error && !errorControl ? <section ref={alertRef} tabIndex={-1} className="action-error" role="alert"><strong>{state.error.message}</strong><span>{state.error.nextAction}</span></section> : null}
+        {state.error ? <section ref={alertRef} tabIndex={-1} className="action-error" role="alert"><strong>{state.error.message}</strong><span>{state.error.nextAction}</span></section> : null}
         <ServiceConfigurationForm draft={state.draft} error={state.error} onChange={editDraft} onPreview={() => void previewConfiguration()} onBack={onBack} />
       </section> : <ProjectConfigurationPreviewPanel preview={state.preview} creating={state.kind === 'creating'} error={state.kind === 'previewing' ? state.error : undefined} alertRef={alertRef} onBack={() => setState(() => ({ kind: 'editing', draft: state.draft }))} onCreate={() => void createConfiguration()} />}
       <aside className="configuration-help"><h2>Portable configuration</h2><p>Paths stay relative to the project root. Put secrets in referenced .env files.</p></aside>

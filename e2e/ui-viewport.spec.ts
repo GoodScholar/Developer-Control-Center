@@ -10,6 +10,21 @@ async function tabTo(page: Page, target: Locator): Promise<void> {
   throw new Error('Keyboard target was not reachable within 80 Tab presses.')
 }
 
+function relativeLuminance(color: string): number {
+  const channels = color.match(/[\d.]+/g)?.slice(0, 3).map(Number)
+  if (!channels || channels.length !== 3) throw new Error(`Unsupported computed color: ${color}`)
+  const [red, green, blue] = channels.map((channel) => {
+    const normalized = channel / 255
+    return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4
+  })
+  return 0.2126 * red! + 0.7152 * green! + 0.0722 * blue!
+}
+
+function contrastRatio(first: string, second: string): number {
+  const luminances = [relativeLuminance(first), relativeLuminance(second)].sort((left, right) => right - left)
+  return (luminances[0]! + 0.05) / (luminances[1]! + 0.05)
+}
+
 for (const size of [{ width: 1100, height: 720 }, { width: 760, height: 520 }]) {
   test(`keeps configuration usable at ${size.width}x${size.height}`, async ({}, testInfo) => {
     const projectRoot = join(testInfo.outputPath(), 'sample-project')
@@ -35,6 +50,19 @@ for (const size of [{ width: 1100, height: 720 }, { width: 760, height: 520 }]) 
       const program = page.getByLabel('Program')
       await tabTo(page, program)
       await page.keyboard.type('pnpm')
+      await page.emulateMedia({ colorScheme: 'dark' })
+      const darkInputColors = await program.evaluate((element) => {
+        const panel = element.closest('.configuration-layout > section')
+        if (!panel) throw new Error('Configuration panel was not found.')
+        return {
+          border: getComputedStyle(element).borderTopColor,
+          panel: getComputedStyle(panel).backgroundColor
+        }
+      })
+      expect(contrastRatio(darkInputColors.border, darkInputColors.panel)).toBeGreaterThanOrEqual(3)
+      await page.screenshot({
+        path: testInfo.outputPath(`project-configuration-editing-${size.width}x${size.height}.png`)
+      })
       const previewButton = page.getByRole('button', { name: 'Preview configuration' })
       await tabTo(page, previewButton)
       await page.keyboard.press('Enter')

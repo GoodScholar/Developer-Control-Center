@@ -193,7 +193,7 @@ test('focuses a mapped field error without rendering the environment value', asy
   expect(screen.getByRole('alert')).not.toHaveTextContent(secretValue)
 })
 
-test('renders a field error message and next action, then focuses its control', async () => {
+test('renders one page alert and a described field error, then focuses its control', async () => {
   preview.mockResolvedValue({
     ok: false,
     error: {
@@ -207,12 +207,23 @@ test('renders a field error message and next action, then focuses its control', 
   const user = userEvent.setup()
   render(<ProjectConfigurationView desktop={desktop} project={project} onBack={vi.fn()} />)
 
-  await user.type(screen.getByLabelText('Program'), 'pnpm')
+  const program = screen.getByLabelText('Program')
+  await user.type(program, 'pnpm')
   await user.click(screen.getByRole('button', { name: 'Preview configuration' }))
 
-  expect(await screen.findByRole('alert')).toHaveTextContent('A program is required.')
-  expect(screen.getByRole('alert')).toHaveTextContent('Enter the program to run.')
-  expect(document.activeElement).toBe(screen.getByLabelText('Program'))
+  const pageAlert = await screen.findByRole('alert')
+  expect(screen.getAllByRole('alert')).toHaveLength(1)
+  expect(pageAlert).toHaveClass('action-error')
+  expect(pageAlert).toHaveTextContent('A program is required.')
+  expect(pageAlert).toHaveTextContent('Enter the program to run.')
+  const fieldIssue = document.getElementById('issue-$.service.program')
+  expect(fieldIssue).toBeVisible()
+  expect(fieldIssue).toHaveClass('field-error')
+  expect(fieldIssue).not.toHaveAttribute('role')
+  expect(fieldIssue).toHaveTextContent('A program is required.')
+  expect(fieldIssue).toHaveTextContent('Enter the program to run.')
+  expect(program).toHaveAttribute('aria-describedby', 'issue-$.service.program')
+  expect(document.activeElement).toBe(program)
 })
 
 test.each([
