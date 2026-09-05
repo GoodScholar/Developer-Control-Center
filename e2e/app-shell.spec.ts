@@ -27,14 +27,24 @@ test('opens an empty project list', async ({}, testInfo) => {
     })
 
     const originalUrl = page.url()
+    const navigatedExternally = page
+      .waitForURL((url) => url.origin === 'https://example.com', { timeout: 7_000, waitUntil: 'commit' })
+      .then(() => true)
+      .catch(() => false)
     await page.evaluate(() => {
       window.location.href = 'https://example.com/'
     })
-    await expect.poll(() => page.url()).toBe(originalUrl)
+    expect(await navigatedExternally).toBe(false)
+    expect(page.url()).toBe(originalUrl)
 
     const windowCount = app.windows().length
+    const openedNewWindow = app
+      .waitForEvent('window', { timeout: 7_000 })
+      .then(() => true)
+      .catch(() => false)
     await page.evaluate(() => window.open('https://example.com/', '_blank'))
-    await expect.poll(() => app.windows().length).toBe(windowCount)
+    expect(await openedNewWindow).toBe(false)
+    expect(app.windows()).toHaveLength(windowCount)
   } finally {
     await app.close()
   }
