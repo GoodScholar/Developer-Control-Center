@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { ProjectSnapshot } from '../shared/contracts'
-import { invalidProjectId, projectDirectoryUnavailable } from './errors'
+import { ControlCenterError, invalidProjectId, projectDirectoryUnavailable } from './errors'
 import type { HostRuntime } from './host-runtime'
 import type { ProjectRegistry, StoredProject } from './project-registry'
 
@@ -45,7 +45,10 @@ export class ControlCenter {
         rootPath: directory.canonicalPath,
         availability: 'available'
       }
-    } catch {
+    } catch (error) {
+      if (!(error instanceof ControlCenterError) || error.detail.code !== 'PROJECT_DIRECTORY_UNAVAILABLE') {
+        throw error
+      }
       return {
         ...project,
         availability: 'missing',

@@ -78,6 +78,28 @@ test('keeps a registration when its directory is missing', async () => {
   controlCenter.close()
 })
 
+test('preserves an unexpected host runtime error when listing projects', async () => {
+  const temporaryRoot = await mkdtemp(join(tmpdir(), 'developer-control-center-'))
+  temporaryRoots.push(temporaryRoot)
+  const projectRoot = join(temporaryRoot, 'sample-project')
+  const databasePath = join(temporaryRoot, 'projects.sqlite')
+  const first = createTestControlCenter(databasePath, new TestHostRuntime(new Map([
+    [projectRoot, { canonicalPath: projectRoot, name: 'sample-project' }]
+  ])))
+  await first.registerProject(projectRoot)
+  first.close()
+  const sentinel = new Error('unexpected host runtime failure')
+  const hostRuntime: HostRuntime = {
+    async inspectProjectDirectory() {
+      throw sentinel
+    }
+  }
+  const reopened = createTestControlCenter(databasePath, hostRuntime)
+
+  await expect(reopened.listProjects()).rejects.toBe(sentinel)
+  reopened.close()
+})
+
 test('unregisters without deleting project files', async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), 'developer-control-center-'))
   temporaryRoots.push(temporaryRoot)

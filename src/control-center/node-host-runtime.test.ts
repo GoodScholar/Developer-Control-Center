@@ -1,8 +1,13 @@
-import { mkdtemp, mkdir, realpath, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, expect, test } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { NodeHostRuntime } from './node-host-runtime'
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...actual, realpath: vi.fn(actual.realpath) }
+})
 
 let temporaryRoot: string
 
@@ -34,4 +39,26 @@ test('returns an actionable error for a missing directory', async () => {
       nextAction: 'Reconnect the drive or choose an accessible project directory.'
     }
   })
+})
+
+test('returns an actionable error when the path is not a directory', async () => {
+  const rootPath = join(temporaryRoot, 'not-a-directory')
+  await writeFile(rootPath, 'file contents')
+
+  await expect(new NodeHostRuntime().inspectProjectDirectory(rootPath)).rejects.toMatchObject({
+    detail: {
+      code: 'PROJECT_DIRECTORY_UNAVAILABLE',
+      message: `The project directory is unavailable: ${rootPath}`,
+      nextAction: 'Reconnect the drive or choose an accessible project directory.'
+    }
+  })
+})
+
+test('preserves an unexpected filesystem error', async () => {
+  const sentinel = new Error('unexpected filesystem failure')
+  vi.mocked(realpath).mockRejectedValueOnce(sentinel)
+
+  await expect(
+    new NodeHostRuntime().inspectProjectDirectory(join(temporaryRoot, 'sample-project'))
+  ).rejects.toBe(sentinel)
 })
