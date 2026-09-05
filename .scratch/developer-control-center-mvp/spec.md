@@ -14,7 +14,7 @@ Developer Control Center（工作名称）是一款 Apache-2.0 开源桌面应�
 
 应用按照服务依赖启动项目，持续展示项目与开发服务状态、预期端口、HTTP/TCP 健康检查和实时运行日志。开发者可以安全地执行 Start All、Stop All，以及单个开发服务的启动、停止和重启。应用只自动管理自己启动的受管进程；外部端口冲突始终要求开发者自行判断和处理。
 
-应用使用 Web 技术构建桌面界面，Rust 本地核心负责系统能力。项目配置、本地元数据和运行日志均留在开发者设备上。首版无账户、无云后端、无默认遥测、无管理员权限要求。
+应用使用 Electron 承载 React、TypeScript 和 Vite 构建的桌面界面，Node Host Runtime 负责系统能力。项目配置、本地元数据和运行日志均留在开发者设备上。首版无账户、无云后端、无默认遥测、无管理员权限要求。
 
 ## User Stories
 
@@ -107,9 +107,10 @@ Developer Control Center（工作名称）是一款 Apache-2.0 开源桌面应�
 - 项目采用工作名称 Developer Control Center；品牌命名不阻塞 MVP，配置协议名保持 `.devcontrol.toml`。
 - 源码采用 Apache-2.0 许可证，以允许宽松复用并提供明确专利授权。
 - 首版支持 macOS 13 及以上版本和 Windows 11；两端的项目配置、启动、停止、日志、端口和健康检查语义必须一致。
-- 桌面架构采用 Tauri 2，界面采用 React、TypeScript 和 Vite，Rust 核心负责所有本地系统能力。
-- 建立一个深的 Control Center 模块作为 UI 与测试共享的主要接口。调用者提交项目注册、配置、运行和历史操作意图，模块返回状态快照、事件和可操作错误。
-- Tauri 通信层保持轻薄，只负责把桌面界面的用户意图转换为 Control Center 模块调用，并把事件推送回界面。
+- 桌面架构采用 Electron，界面采用 React、TypeScript 和 Vite；Electron 主进程直接托管不依赖 Electron 的 TypeScript Control Center，Node Host Runtime 负责所有本地系统能力。
+- 建立一个深的 TypeScript Control Center 模块作为 UI 与测试共享的主要接口；该模块不得导入 Electron。调用者提交项目注册、配置、运行和历史操作意图，模块返回状态快照、事件和可操作错误。
+- Main/Preload/Renderer 通信层保持轻薄，只负责把桌面界面的用户意图转换为 Control Center 模块调用，并把事件推送回界面。
+- Renderer 必须启用沙盒与上下文隔离，并关闭 Node 集成；它只能通过不暴露原始 IPC、任意通道、任意路径读取或任意命令执行的窄 Preload 接口提交已定义意图。
 - Host Runtime 是 Control Center 模块内部的真实适配缝。macOS、Windows 和自动化测试分别提供适配器；适配器负责进程树、信号、端口、时钟和受限文件访问等平台行为。
 - 项目配置模块负责解析、校验、迁移和保存 `.devcontrol.toml`，并保证无效配置不会进入执行阶段。
 - `.devcontrol.toml` 位于开发项目根目录，包含 `schema_version = 1`，所有路径相对于开发项目根目录。
@@ -168,7 +169,7 @@ Developer Control Center（工作名称）是一款 Apache-2.0 开源桌面应�
 - 持久化测试通过公开模块行为验证项目注册、运行摘要、配置热重载和清除历史数据，不断言 SQLite 内部表结构。
 - UI 测试重点验证项目列表、项目详情、配置审核表单、服务操作、状态呈现、合并日志、错误说明、键盘导航和焦点状态。
 - 第二个测试缝是少量真实桌面验收测试：添加示例项目、审核检测建议、生成配置、Start All、查看状态和日志、Stop All，并确认无遗留受管进程。
-- 真实桌面验收测试分别在 macOS 和 Windows CI 上执行，以覆盖 Tauri 通信、Web UI、安装构建和真实进程生命周期。
+- 真实桌面验收测试分别在 macOS 和 Windows CI 上执行，以覆盖 Main/Preload/Renderer 通信、Web UI、安装构建和真实进程生命周期。
 - 跨平台 Host Runtime 适配器共享同一组契约测试，保证两端对启动、停止、状态、端口和错误的核心语义一致。
 - 性能测试验证既定空闲资源预算、10 服务日志场景和 500 毫秒日志可见延迟目标。
 - 仓库目前没有实现代码或既有测试，因此不存在可沿用的测试先例；首个实现票据应先建立上述两个测试缝，再通过纵向行为逐步扩展。
@@ -179,7 +180,7 @@ Developer Control Center（工作名称）是一款 Apache-2.0 开源桌面应�
 - 一次性任务、数据库迁移、代码生成、Runbook 或通用命令中心。
 - 内置交互终端、PTY 输入或完整终端模拟器。
 - Docker 容器、镜像、卷、网络或虚拟机的直接管理。
-- Node、Python、Rust、Java、Docker 或其他开发环境的自动安装和版本切换。
+- Node、Python、Java、Docker 或其他开发环境的自动安装和版本切换。
 - 除 `package.json` 和 Docker Compose 之外的自动项目检测器。
 - 云同步、用户账户、远程机器、团队协作、审批或权限系统。
 - 自动重启、无限重试或后台自愈开发服务。
