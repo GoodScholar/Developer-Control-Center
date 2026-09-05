@@ -4,7 +4,7 @@
 
 **Blocked by:** 01/建立可持久化的项目注册闭环
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 - [x] 用户可以为已注册开发项目添加一个长期运行的开发服务。
 - [x] 服务表单支持程序、参数、相对工作目录、非敏感环境值和外部 `.env` 引用。
