@@ -2,7 +2,7 @@
 
 ## Decision
 
-Developer Control Center 使用 Electron 承载 React、TypeScript 和 Vite 界面，并由 Electron 主进程直接托管不依赖 Electron 的 TypeScript Control Center 模块。Node Host Runtime 负责进程、文件、端口和网络能力；Renderer 保持沙盒化，只能通过受限 Preload 接口操作项目，以单一 TypeScript 技术栈替代原 Tauri 与 Rust 方案。
+Developer Control Center 使用 Electron 承载 React、TypeScript 和 Vite 界面，并由 Electron 主进程直接托管不依赖 Electron 的 TypeScript Control Center 模块。Node Host Runtime 负责进程、文件、端口和网络能力；Renderer 保持沙盒化，只能通过受限 Preload 接口操作项目，以单一 TypeScript 技术栈替代原有跨语言桌面方案。
 
 ## Consequences
 

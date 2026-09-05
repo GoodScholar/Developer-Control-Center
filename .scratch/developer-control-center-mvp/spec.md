@@ -180,7 +180,7 @@ Developer Control Center（工作名称）是一款 Apache-2.0 开源桌面应�
 - 一次性任务、数据库迁移、代码生成、Runbook 或通用命令中心。
 - 内置交互终端、PTY 输入或完整终端模拟器。
 - Docker 容器、镜像、卷、网络或虚拟机的直接管理。
-- Node、Python、Java、Docker 或其他开发环境的自动安装和版本切换。
+- Node、Python、Rust、Java、Docker 或其他开发环境的自动安装和版本切换。
 - 除 `package.json` 和 Docker Compose 之外的自动项目检测器。
 - 云同步、用户账户、远程机器、团队协作、审批或权限系统。
 - 自动重启、无限重试或后台自愈开发服务。
