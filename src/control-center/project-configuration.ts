@@ -41,6 +41,9 @@ function assertString(value: unknown, fieldPath: string): string {
 }
 function assertStringArray(value: unknown, fieldPath: string): string[] {
   if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) fail('CONFIG_FIELD_TYPE_INVALID', fieldPath, 'The field has the wrong type.', 'Enter a list of strings.')
+  for (let index = 0; index < value.length; index += 1) {
+    if (!Object.hasOwn(value, index)) fail('CONFIG_FIELD_TYPE_INVALID', `${fieldPath}[${index}]`, 'The field has the wrong type.', 'Enter a list of strings.')
+  }
   value.forEach((item, index) => {
     if (item.includes('\0')) fail('CONFIG_STRING_CONTAINS_CONTROL_CHARACTER', `${fieldPath}[${index}]`, 'The string contains a disallowed control character.', 'Remove the control character and try again.')
   })
@@ -114,6 +117,9 @@ function normalizeParsedService(record: UnknownRecord, servicePath: string): Dev
 }
 function normalizeEnvironmentRows(value: unknown, fieldPath: string): Readonly<Record<string, string>> {
   if (!Array.isArray(value)) fail('CONFIG_FIELD_TYPE_INVALID', fieldPath, 'The environment rows have the wrong type.', 'Enter environment key and value rows.')
+  for (let index = 0; index < value.length; index += 1) {
+    if (!Object.hasOwn(value, index)) fail('CONFIG_FIELD_TYPE_INVALID', `${fieldPath}[${index}]`, 'The environment row has the wrong type.', 'Enter an environment key and value.')
+  }
   const entries = new Map<string, string>()
   value.forEach((candidate, index) => {
     const rowPath = `${fieldPath}[${index}]`

@@ -238,6 +238,22 @@ test.each([
     .toThrowError(expect.objectContaining({ detail: expect.objectContaining({ code, fieldPath }) }))
 })
 
+test.each([
+  ['args', (draft: ProjectConfigurationDraft) => { draft.service.args = new Array(1) }, '$.service.args[0]'],
+  ['environment rows', (draft: ProjectConfigurationDraft) => { draft.service.env = new Array(1) }, '$.service.env[0]']
+])('rejects sparse %s from an IPC draft', (_name, mutate, fieldPath) => {
+  const draft = structuredClone(minimalDraft)
+  mutate(draft)
+  expect(() => buildProjectConfigurationPreview(draft)).toThrowError(
+    expect.objectContaining({
+      detail: expect.objectContaining({
+        code: 'CONFIG_FIELD_TYPE_INVALID',
+        fieldPath
+      })
+    })
+  )
+})
+
 test.each(['pnpm.cmd', 'scripts/dev-server'])('accepts a portable program form: %s', (program) => {
   const draft = structuredClone(minimalDraft)
   draft.service.program = program
