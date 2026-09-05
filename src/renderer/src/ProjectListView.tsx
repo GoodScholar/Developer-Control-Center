@@ -12,9 +12,9 @@ export function ProjectListView(props: ProjectListViewProps) {
   return <main className="app-shell">
     <header className="app-header">
       <div>
-        <p className="eyebrow">Local workspace</p>
+        <p className="eyebrow">Development projects</p>
         <h1>Developer Control Center</h1>
-        <p className="introduction">Register local repositories and keep their development services in view.</p>
+        <p className="introduction">Register development projects and keep their development services in view.</p>
       </div>
       <button className="primary-action" type="button" onClick={props.onAdd}>Add project</button>
     </header>
@@ -25,7 +25,7 @@ export function ProjectListView(props: ProjectListViewProps) {
         <span className="project-count" aria-label={`${props.projects.length} registered projects`}>{props.projects.length}</span>
       </div>
       {props.projects.length === 0 ? <div className="empty-state">
-        <p className="empty-title">No projects yet</p><p>Add a local repository to begin managing its development services.</p>
+        <p className="empty-title">No projects yet</p><p>Add a development project to begin managing its development services.</p>
       </div> : <ul className="project-list">{props.projects.map((project) => <li className="project-row" key={project.id}>
         <div className="project-summary">
           <div className="project-title-row"><h3>{project.name}</h3><span className={`status status-${project.availability}`}>

@@ -31,6 +31,12 @@ function isRecord(value: unknown): value is UnknownRecord {
 function field(base: string, key: string): string {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) ? `${base}.${key}` : `${base}[${JSON.stringify(key)}]`
 }
+function isValidServiceId(id: string): boolean {
+  return id.length <= 64 && serviceIdPattern.test(id)
+}
+function serviceFieldPath(id: string): string {
+  return isValidServiceId(id) ? `$.services.${id}` : `$.services[${JSON.stringify(id)}]`
+}
 function rejectUnknown(record: UnknownRecord, allowed: ReadonlySet<string>, base: string): void {
   const unknown = Object.keys(record).find((key) => !allowed.has(key))
   if (unknown !== undefined) fail('CONFIG_UNKNOWN_FIELD', field(base, unknown), 'The project configuration contains an unknown field.', 'Remove the field or correct its spelling.')
@@ -61,9 +67,10 @@ function validatePortablePath(value: unknown, fieldPath: string, allowDot: boole
 }
 function validateProgram(value: unknown, fieldPath: string): string {
   if (value === undefined) fail('CONFIG_PROGRAM_REQUIRED', fieldPath, 'A program is required.', 'Enter an executable name or project-relative program path.')
-  const program = assertString(value, fieldPath).trim()
+  const rawProgram = assertString(value, fieldPath)
+  if (/[\0\r\n]/.test(rawProgram)) fail('CONFIG_STRING_CONTAINS_CONTROL_CHARACTER', fieldPath, 'The program contains a disallowed control character.', 'Remove the control character and try again.')
+  const program = rawProgram.trim()
   if (program.length === 0) fail('CONFIG_PROGRAM_REQUIRED', fieldPath, 'A program is required.', 'Enter an executable name or project-relative program path.')
-  if (/[\0\r\n]/.test(program)) fail('CONFIG_STRING_CONTAINS_CONTROL_CHARACTER', fieldPath, 'The program contains a disallowed control character.', 'Remove the control character and try again.')
   return program.includes('/') || program.includes('\\') || absolutePathPatterns.some((pattern) => pattern.test(program))
     ? validatePortablePath(program, fieldPath, false) : program
 }
@@ -152,7 +159,7 @@ function normalizeDraft(value: unknown): ProjectConfigurationV1 {
   if (!isRecord(value.service)) fail('CONFIG_FIELD_TYPE_INVALID', '$.service', 'The service draft has the wrong type.', 'Submit one structured service draft.')
   const service = value.service
   rejectUnknown(service, draftServiceFields, '$.service')
-  if (typeof service.id !== 'string' || service.id.length > 64 || !serviceIdPattern.test(service.id)) fail('CONFIG_SERVICE_ID_INVALID', '$.service.id', 'The service identifier is invalid.', 'Use 1-64 lowercase letters, numbers, and single hyphen-separated segments.')
+  if (typeof service.id !== 'string' || !isValidServiceId(service.id)) fail('CONFIG_SERVICE_ID_INVALID', '$.service.id', 'The service identifier is invalid.', 'Use 1-64 lowercase letters, numbers, and single hyphen-separated segments.')
   if (typeof service.shell !== 'boolean') fail('CONFIG_FIELD_TYPE_INVALID', '$.service.shell', 'Shell must be a boolean.', 'Use true or false.')
   return { schemaVersion: 1, services: { [service.id]: {
     program: validateProgram(service.program, '$.service.program'),
@@ -190,8 +197,8 @@ export function parseProjectConfiguration(source: string): ProjectConfigurationV
   if (!isRecord(document.services) || Object.keys(document.services).length === 0) fail('CONFIG_SERVICES_REQUIRED', '$.services', 'At least one service is required.', 'Define at least one service table.')
   const services: Array<[string, DevelopmentServiceConfiguration]> = []
   for (const id of Object.keys(document.services).sort()) {
-    const servicePath = field('$.services', id)
-    if (!serviceIdPattern.test(id) || id.length > 64) fail('CONFIG_SERVICE_ID_INVALID', servicePath, 'The service identifier is invalid.', 'Use 1-64 lowercase letters, numbers, and single hyphen-separated segments.')
+    const servicePath = serviceFieldPath(id)
+    if (!isValidServiceId(id)) fail('CONFIG_SERVICE_ID_INVALID', servicePath, 'The service identifier is invalid.', 'Use 1-64 lowercase letters, numbers, and single hyphen-separated segments.')
     const value = document.services[id]
     if (!isRecord(value)) fail('CONFIG_FIELD_TYPE_INVALID', servicePath, 'The service has the wrong type.', 'Use a service table.')
     services.push([id, normalizeParsedService(value, servicePath)])

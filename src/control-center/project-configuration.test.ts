@@ -154,6 +154,52 @@ test('fills all optional service defaults and only boolean true enables shell', 
 })
 
 test.each([
+  ['leading LF', '\npnpm'],
+  ['trailing LF', 'pnpm\n'],
+  ['leading CR', '\rpnpm'],
+  ['trailing CR', 'pnpm\r']
+])('rejects program control characters before draft normalization: %s', (_name, program) => {
+  const draft = structuredClone(minimalDraft)
+  draft.service.program = program
+  expect(() => buildProjectConfigurationPreview(draft)).toThrowError(expect.objectContaining({
+    detail: expect.objectContaining({
+      code: 'CONFIG_STRING_CONTAINS_CONTROL_CHARACTER',
+      fieldPath: '$.service.program'
+    })
+  }))
+})
+
+test.each([
+  ['leading LF', '\\npnpm'],
+  ['trailing LF', 'pnpm\\n'],
+  ['leading CR', '\\rpnpm'],
+  ['trailing CR', 'pnpm\\r']
+])('rejects program control characters parsed from TOML: %s', (_name, encodedProgram) => {
+  expect(() => parseProjectConfiguration(
+    `schema_version = 1\n[services.web]\nprogram = "${encodedProgram}"\n`
+  )).toThrowError(expect.objectContaining({
+    detail: expect.objectContaining({
+      code: 'CONFIG_STRING_CONTAINS_CONTROL_CHARACTER',
+      fieldPath: '$.services.web.program'
+    })
+  }))
+})
+
+const oversizedServiceId = 'a'.repeat(65)
+
+test.each([
+  ['Web', '$.services["Web"]'],
+  ['web_api', '$.services["web_api"]'],
+  [oversizedServiceId, `$.services["${oversizedServiceId}"]`]
+])('uses bracket notation for invalid service identifier field paths: %s', (serviceId, fieldPath) => {
+  expect(() => parseProjectConfiguration(
+    `schema_version = 1\n[services."${serviceId}"]\nprogram = "pnpm"\n`
+  )).toThrowError(expect.objectContaining({
+    detail: expect.objectContaining({ code: 'CONFIG_SERVICE_ID_INVALID', fieldPath })
+  }))
+})
+
+test.each([
   ['broken = "unterminated', 'CONFIG_TOML_INVALID', '$'],
   ['[services.web]\nprogram = "pnpm"', 'CONFIG_SCHEMA_VERSION_REQUIRED', '$.schema_version'],
   ['schema_version = 1.0\n[services.web]\nprogram = "pnpm"', 'CONFIG_SCHEMA_VERSION_UNSUPPORTED', '$.schema_version'],
