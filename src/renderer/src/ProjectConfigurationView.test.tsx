@@ -193,6 +193,54 @@ test('focuses a mapped field error without rendering the environment value', asy
   expect(screen.getByRole('alert')).not.toHaveTextContent(secretValue)
 })
 
+test('renders a field error message and next action, then focuses its control', async () => {
+  preview.mockResolvedValue({
+    ok: false,
+    error: {
+      code: 'CONFIG_PROGRAM_REQUIRED',
+      resource: { kind: 'project_configuration', projectId: 'project-1' },
+      fieldPath: '$.service.program',
+      message: 'A program is required.',
+      nextAction: 'Enter the program to run.'
+    }
+  })
+  const user = userEvent.setup()
+  render(<ProjectConfigurationView desktop={desktop} project={project} onBack={vi.fn()} />)
+
+  await user.type(screen.getByLabelText('Program'), 'pnpm')
+  await user.click(screen.getByRole('button', { name: 'Preview configuration' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('A program is required.')
+  expect(screen.getByRole('alert')).toHaveTextContent('Enter the program to run.')
+  expect(document.activeElement).toBe(screen.getByLabelText('Program'))
+})
+
+test.each([
+  '$.service.args[2]',
+  '$.service.macos.program'
+])('falls back to a focused page alert when %s has no rendered control', async (fieldPath) => {
+  preview.mockResolvedValue({
+    ok: false,
+    error: {
+      code: 'CONFIG_FIELD_TYPE_INVALID',
+      resource: { kind: 'project_configuration', projectId: 'project-1' },
+      fieldPath,
+      message: 'The configuration field is unavailable.',
+      nextAction: 'Review the configured fields and try again.'
+    }
+  })
+  const user = userEvent.setup()
+  render(<ProjectConfigurationView desktop={desktop} project={project} onBack={vi.fn()} />)
+
+  await user.type(screen.getByLabelText('Program'), 'pnpm')
+  await user.click(screen.getByRole('button', { name: 'Preview configuration' }))
+
+  const pageAlert = await screen.findByRole('alert')
+  expect(pageAlert).toHaveTextContent('The configuration field is unavailable.')
+  expect(pageAlert).toHaveTextContent('Review the configured fields and try again.')
+  expect(document.activeElement).toBe(pageAlert)
+})
+
 test.each([
   ['CONFIG_UNKNOWN_FIELD', '$.service.unknown', 'project_configuration'],
   ['PROJECT_NOT_FOUND', undefined, 'project'],

@@ -24,7 +24,10 @@ function removeAt<T>(values: readonly T[], index: number): T[] {
 }
 
 function FieldIssue({ error, path }: { error: ActionableError | undefined; path: string }) {
-  return error?.fieldPath === path ? <span className="field-error" id={`issue-${path}`} role="alert">{error.message}</span> : null
+  return error?.fieldPath === path ? <span className="field-error" id={`issue-${path}`} role="alert">
+    <strong>{error.message}</strong>
+    <span>{error.nextAction}</span>
+  </span> : null
 }
 
 function describedBy(error: ActionableError | undefined, path: string): string | undefined {
