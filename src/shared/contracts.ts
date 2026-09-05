@@ -90,4 +90,14 @@ export interface DesktopApi {
     add(): Promise<ActionResult<ProjectSnapshot | null>>
     remove(projectId: string): Promise<ActionResult<null>>
   }
+  projectConfigurations: {
+    preview(
+      projectId: string,
+      draft: ProjectConfigurationDraft
+    ): Promise<ActionResult<ProjectConfigurationPreview>>
+    create(
+      projectId: string,
+      draft: ProjectConfigurationDraft
+    ): Promise<ActionResult<ProjectConfigurationCreated>>
+  }
 }

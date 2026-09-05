@@ -22,6 +22,10 @@ function createDesktopApi(
         projects = []
         return { ok: true, value: null }
       }
+    },
+    projectConfigurations: {
+      preview: async () => ({ ok: true, value: { source: 'schema_version = 1\n' } }),
+      create: async () => ({ ok: true, value: { relativePath: '.devcontrol.toml' } })
     }
   }
 }
@@ -81,6 +85,10 @@ test('keeps the project list when an action fails and explains recovery', async 
       list: async () => ({ ok: true, value: [project] }),
       add: async () => ({ ok: false, error }),
       remove: async () => ({ ok: false, error })
+    },
+    projectConfigurations: {
+      preview: async () => ({ ok: true, value: { source: 'schema_version = 1\n' } }),
+      create: async () => ({ ok: true, value: { relativePath: '.devcontrol.toml' } })
     }
   }
   const user = userEvent.setup()

@@ -6,6 +6,7 @@ import { NodeHostRuntime } from '../control-center/node-host-runtime'
 import { SqliteProjectRegistry } from '../control-center/sqlite-project-registry'
 import { createMainWindow } from './create-window'
 import { createProjectDirectoryPicker } from './project-directory-picker'
+import { registerProjectConfigurationIpc } from './register-project-configuration-ipc'
 import { registerProjectIpc } from './register-project-ipc'
 
 let controlCenter: ControlCenter | undefined
@@ -22,12 +23,15 @@ void app.whenReady().then(() => {
     new NodeHostRuntime(),
     randomUUID
   )
+  const isTrustedSender = (event: Electron.IpcMainInvokeEvent) =>
+    event.senderFrame === mainWindow.webContents.mainFrame
   registerProjectIpc(
     ipcMain,
     controlCenter,
     createProjectDirectoryPicker(mainWindow),
-    (event) => event.senderFrame === mainWindow.webContents.mainFrame
+    isTrustedSender
   )
+  registerProjectConfigurationIpc(ipcMain, controlCenter, isTrustedSender)
 })
 
 app.on('before-quit', () => {

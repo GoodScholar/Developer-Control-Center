@@ -10,20 +10,26 @@ test('opens an empty project list', async ({}, testInfo) => {
     await expect(page.getByRole('heading', { name: 'Developer Control Center' })).toBeVisible()
     await expect(page.getByText('No projects yet')).toBeVisible()
     await expect.poll(() => page.evaluate(() => {
-      const candidate = window as unknown as { desktop?: { projects?: object } }
+      const candidate = window as unknown as {
+        desktop?: { projects?: object; projectConfigurations?: object }
+      }
       return {
         hasRequire: 'require' in window,
         hasProcess: 'process' in window,
-        desktopKeys: candidate.desktop ? Object.keys(candidate.desktop) : [],
+        desktopKeys: candidate.desktop ? Object.keys(candidate.desktop).sort() : [],
         projectKeys: candidate.desktop?.projects
           ? Object.keys(candidate.desktop.projects).sort()
+          : [],
+        configurationKeys: candidate.desktop?.projectConfigurations
+          ? Object.keys(candidate.desktop.projectConfigurations).sort()
           : []
       }
     })).toEqual({
       hasRequire: false,
       hasProcess: false,
-      desktopKeys: ['projects'],
-      projectKeys: ['add', 'list', 'remove']
+      desktopKeys: ['projectConfigurations', 'projects'],
+      projectKeys: ['add', 'list', 'remove'],
+      configurationKeys: ['create', 'preview']
     })
 
     const originalUrl = page.url()
