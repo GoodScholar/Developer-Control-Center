@@ -45,3 +45,13 @@ export function configurationError(
     nextAction
   })
 }
+
+export function projectConfigurationAlreadyExists(projectId?: string): ControlCenterError {
+  return configurationError(
+    'PROJECT_CONFIGURATION_ALREADY_EXISTS',
+    undefined,
+    'The project configuration already exists and was not changed.',
+    'Open .devcontrol.toml in an external editor to review or change it.',
+    projectId
+  )
+}

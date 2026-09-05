@@ -1,4 +1,14 @@
-import { mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises'
+import {
+  link,
+  mkdtemp,
+  mkdir,
+  open,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  writeFile
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
@@ -6,12 +16,19 @@ import { NodeHostRuntime } from './node-host-runtime'
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
-  return { ...actual, realpath: vi.fn(actual.realpath) }
+  return {
+    ...actual,
+    realpath: vi.fn(actual.realpath),
+    open: vi.fn(actual.open),
+    link: vi.fn(actual.link),
+    rm: vi.fn(actual.rm)
+  }
 })
 
 let temporaryRoot: string
 
 beforeEach(async () => {
+  vi.clearAllMocks()
   temporaryRoot = await mkdtemp(join(tmpdir(), 'developer-control-center-'))
 })
 
@@ -61,4 +78,158 @@ test('preserves an unexpected filesystem error', async () => {
   await expect(
     new NodeHostRuntime().inspectProjectDirectory(join(temporaryRoot, 'sample-project'))
   ).rejects.toBe(sentinel)
+})
+
+test('creates the complete project configuration as UTF-8', async () => {
+  const rootPath = join(temporaryRoot, 'sample-project')
+  await mkdir(rootPath)
+  const source = 'schema_version = 1\n\n[services.web]\nprogram = "pnpm"\n'
+
+  await new NodeHostRuntime().createProjectConfiguration(rootPath, source)
+
+  await expect(readFile(join(rootPath, '.devcontrol.toml'), 'utf8')).resolves.toBe(source)
+  await expect(readdir(rootPath)).resolves.toEqual(['.devcontrol.toml'])
+})
+
+test('never changes an existing project configuration', async () => {
+  const rootPath = join(temporaryRoot, 'sample-project')
+  const target = join(rootPath, '.devcontrol.toml')
+  await mkdir(rootPath)
+  await writeFile(target, 'existing-marker', 'utf8')
+
+  await expect(
+    new NodeHostRuntime().createProjectConfiguration(rootPath, 'replacement')
+  ).rejects.toMatchObject({
+    detail: {
+      code: 'PROJECT_CONFIGURATION_ALREADY_EXISTS',
+      resource: { kind: 'project_configuration' }
+    }
+  })
+  await expect(readFile(target, 'utf8')).resolves.toBe('existing-marker')
+  await expect(readdir(rootPath)).resolves.toEqual(['.devcontrol.toml'])
+})
+
+test('allows at most one concurrent creator and preserves its complete bytes', async () => {
+  const rootPath = join(temporaryRoot, 'sample-project')
+  await mkdir(rootPath)
+  const runtime = new NodeHostRuntime()
+
+  const results = await Promise.allSettled([
+    runtime.createProjectConfiguration(rootPath, 'first-complete\n'),
+    runtime.createProjectConfiguration(rootPath, 'second-complete\n')
+  ])
+
+  expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+  const rejected = results.filter((result): result is PromiseRejectedResult =>
+    result.status === 'rejected'
+  )
+  expect(rejected).toHaveLength(1)
+  expect(rejected[0]!.reason).toMatchObject({
+    detail: { code: 'PROJECT_CONFIGURATION_ALREADY_EXISTS' }
+  })
+  const stored = await readFile(join(rootPath, '.devcontrol.toml'), 'utf8')
+  expect(['first-complete\n', 'second-complete\n']).toContain(stored)
+  await expect(readdir(rootPath)).resolves.toEqual(['.devcontrol.toml'])
+})
+
+test('closes and removes only the staging file created by a failed write', async () => {
+  const rootPath = join(temporaryRoot, 'sample-project')
+  const target = join(rootPath, '.devcontrol.toml')
+  const staging = join(rootPath, '.devcontrol.toml.tmp-write-failure')
+  await mkdir(rootPath)
+  const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+  const handle = await actual.open(staging, 'wx')
+  const close = vi.spyOn(handle, 'close')
+  vi.spyOn(handle, 'writeFile').mockRejectedValueOnce(new Error('write sentinel'))
+  vi.mocked(open).mockResolvedValueOnce(handle)
+
+  await expect(
+    new NodeHostRuntime(() => 'write-failure').createProjectConfiguration(rootPath, 'complete source')
+  ).rejects.toThrow('write sentinel')
+
+  expect(close).toHaveBeenCalledOnce()
+  await expect(readFile(target, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+  await expect(readFile(staging, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+})
+
+test('writes env file references without reading the referenced files', async () => {
+  const rootPath = join(temporaryRoot, 'sample-project')
+  await mkdir(rootPath)
+  const source = 'schema_version = 1\nenv_files = ["missing-secret.env"]\n'
+
+  await new NodeHostRuntime().createProjectConfiguration(rootPath, source)
+
+  await expect(readFile(join(rootPath, '.devcontrol.toml'), 'utf8')).resolves.toBe(source)
+  await expect(readFile(join(rootPath, 'missing-secret.env'), 'utf8')).rejects.toMatchObject({
+    code: 'ENOENT'
+  })
+})
+
+test.each(['sync', 'close'] as const)('does not publish when staging %s fails', async (method) => {
+  const rootPath = join(temporaryRoot, `failure-${method}`)
+  const staging = join(rootPath, `.devcontrol.toml.tmp-${method}-failure`)
+  await mkdir(rootPath)
+  const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+  const handle = await actual.open(staging, 'wx')
+  const sentinel = new Error(`${method} sentinel`)
+  if (method === 'sync') vi.spyOn(handle, 'sync').mockRejectedValueOnce(sentinel)
+  if (method === 'close') {
+    const actualClose = handle.close.bind(handle)
+    vi.spyOn(handle, 'close').mockRejectedValueOnce(sentinel).mockImplementationOnce(actualClose)
+  }
+  vi.mocked(open).mockResolvedValueOnce(handle)
+
+  await expect(
+    new NodeHostRuntime(() => `${method}-failure`).createProjectConfiguration(rootPath, 'source')
+  ).rejects.toBe(sentinel)
+
+  await expect(readFile(join(rootPath, '.devcontrol.toml'), 'utf8')).rejects.toMatchObject({
+    code: 'ENOENT'
+  })
+  await expect(readFile(staging, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+})
+
+test('preserves the write error when staging cleanup fails', async () => {
+  const rootPath = join(temporaryRoot, 'cleanup-failure')
+  const staging = join(rootPath, '.devcontrol.toml.tmp-cleanup-failure')
+  await mkdir(rootPath)
+  const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+  const handle = await actual.open(staging, 'wx')
+  const sentinel = new Error('write sentinel')
+  vi.spyOn(handle, 'writeFile').mockRejectedValueOnce(sentinel)
+  vi.mocked(open).mockResolvedValueOnce(handle)
+  vi.mocked(rm).mockRejectedValueOnce(new Error('cleanup sentinel'))
+
+  await expect(
+    new NodeHostRuntime(() => 'cleanup-failure').createProjectConfiguration(rootPath, 'source')
+  ).rejects.toBe(sentinel)
+})
+
+test('keeps a successful published result when staging cleanup fails', async () => {
+  const rootPath = join(temporaryRoot, 'published-cleanup-failure')
+  await mkdir(rootPath)
+  vi.mocked(rm).mockRejectedValueOnce(new Error('cleanup sentinel'))
+
+  await expect(
+    new NodeHostRuntime(() => 'published-cleanup-failure').createProjectConfiguration(
+      rootPath,
+      'complete source'
+    )
+  ).resolves.toBeUndefined()
+  await expect(readFile(join(rootPath, '.devcontrol.toml'), 'utf8')).resolves.toBe('complete source')
+  await expect(readdir(rootPath).then((entries) => entries.sort())).resolves.toEqual([
+    '.devcontrol.toml',
+    '.devcontrol.toml.tmp-published-cleanup-failure'
+  ])
+})
+
+test.each(['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM'])('maps staging filesystem error %s', async (code) => {
+  const rootPath = join(temporaryRoot, `filesystem-${code}`)
+  await mkdir(rootPath)
+  vi.mocked(open).mockRejectedValueOnce(Object.assign(new Error('filesystem sentinel'), { code }))
+
+  await expect(new NodeHostRuntime().createProjectConfiguration(rootPath, 'source')).rejects.toMatchObject({
+    detail: { code: 'PROJECT_DIRECTORY_UNAVAILABLE' }
+  })
+  expect(link).not.toHaveBeenCalled()
 })

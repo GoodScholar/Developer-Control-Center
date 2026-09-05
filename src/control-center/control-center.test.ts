@@ -92,7 +92,8 @@ test('preserves an unexpected host runtime error when listing projects', async (
   const hostRuntime: HostRuntime = {
     async inspectProjectDirectory() {
       throw sentinel
-    }
+    },
+    async createProjectConfiguration() {}
   }
   const reopened = createTestControlCenter(databasePath, hostRuntime)
 
