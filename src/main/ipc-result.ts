@@ -15,11 +15,13 @@ function unexpectedError(resourceKind: ResourceKind): ActionableError {
   }
 }
 
-function untrustedIpcSender(): ActionableError {
+function untrustedIpcSender(resourceKind: ResourceKind): ActionableError {
   return {
     code: 'UNTRUSTED_IPC_SENDER',
     resource: { kind: 'application' },
-    message: 'The request was rejected.',
+    message: resourceKind === 'project'
+      ? 'The project request was rejected.'
+      : 'The request was rejected.',
     nextAction: 'Use the Developer Control Center window and try again.'
   }
 }
@@ -30,7 +32,7 @@ export async function authorizedResult<T>(
   resourceKind: ResourceKind,
   action: () => Promise<T>
 ): Promise<ActionResult<T>> {
-  if (!isTrustedSender(event)) return { ok: false, error: untrustedIpcSender() }
+  if (!isTrustedSender(event)) return { ok: false, error: untrustedIpcSender(resourceKind) }
   try {
     return { ok: true, value: await action() }
   } catch (error) {

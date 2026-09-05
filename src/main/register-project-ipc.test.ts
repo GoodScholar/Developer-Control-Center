@@ -86,6 +86,25 @@ test('rejects an untrusted sender before touching the control center', async () 
   expect(listProjects).not.toHaveBeenCalled()
 })
 
+test.each([
+  ['projects:list', []],
+  ['projects:add', []],
+  ['projects:remove', ['project-1']]
+] as const)('preserves the legacy untrusted sender result for %s', async (channel, args) => {
+  const { handlers, ipc } = captureHandlers()
+  registerProjectIpc(ipc, controlCenter, picker, () => false)
+
+  await expect(handlers.get(channel)!(untrustedEvent, ...args)).resolves.toEqual({
+    ok: false,
+    error: {
+      code: 'UNTRUSTED_IPC_SENDER',
+      resource: { kind: 'application' },
+      message: 'The project request was rejected.',
+      nextAction: 'Use the Developer Control Center window and try again.'
+    }
+  })
+})
+
 test('serializes domain errors without a stack', async () => {
   const { handlers, ipc } = captureHandlers()
   listProjects.mockRejectedValue(projectDirectoryUnavailable('/missing'))
