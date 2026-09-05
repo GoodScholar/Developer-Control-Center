@@ -147,7 +147,7 @@ WATCH_MODE = "poll"
 `working_directory` 与 `env_files` 使用同一词法规则：
 
 - 使用 `/` 作为配置分隔符；`\` 一律拒绝，避免 Windows 转义和平台差异。
-- 不允许 POSIX 绝对路径、Windows 盘符路径、UNC 路径、`~` 前缀或 URL。
+- 不允许 POSIX 绝对路径、任何 Windows 盘符路径（包括 `C:/repo` 与盘符相对形式 `C:repo`）、UNC 路径、`~` 前缀或 URL。
 - 除 `working_directory` 可精确等于 `"."` 外，每个路径段必须非空，且不能是 `.` 或 `..`。
 - 不允许前导 `/`、尾随 `/` 或连续 `//`。
 - NUL、CR 和 LF 一律拒绝。
@@ -174,7 +174,7 @@ WATCH_MODE = "poll"
 
 - 解析和草稿构建都产生同一种 `ProjectConfigurationV1` 规范化对象，补齐 `args`、`workingDirectory`、`shell`、`envFiles` 和 `env` 默认值。
 - 序列化始终输出 UTF-8、LF 换行和一个结尾换行。
-- 输出顺序固定为 `schema_version`、按服务 ID 字典序排列的服务；每个服务内按 `program`、`args`、`working_directory`、`shell`、`env_files`、`env`、`macos`、`windows` 排列；环境 key 按字典序排列。
+- 输出顺序固定为 `schema_version`、按 Unicode 代码单元升序排列的服务；每个服务内按 `program`、`args`、`working_directory`、`shell`、`env_files`、`env`、`macos`、`windows` 排列；环境 key 同样按 Unicode 代码单元升序排列。实现不得依赖系统 locale，确保 macOS 与 Windows 生成相同字节。
 - 本票据只有一个服务，但确定性顺序可以让未来多服务配置获得稳定 diff。
 - 不保留源文件注释或原始格式；本票据不读取已有配置，因此不存在格式回写。
 - 依赖库只负责合法 TOML 文本与普通 JavaScript 值之间的转换。未知字段、类型、默认值、路径、平台覆盖及敏感信息规则均由自有模块决定。
@@ -393,16 +393,16 @@ Renderer 只根据已知 `fieldPath` 聚焦或标记字段；未知路径仍显�
 
 ## 7. 文件创建语义
 
-Node Host Runtime 对 `<canonicalRootPath>/.devcontrol.toml` 实现 create-exclusive、atomic-ish 写入：
+Node Host Runtime 对 `<canonicalRootPath>/.devcontrol.toml` 实现完整暂存、no-replace 发布：
 
-1. 只使用固定 basename `.devcontrol.toml`，目标目录来自本次 `inspectProjectDirectory` 的结果；
-2. 以 Node 独占创建标志 `wx` 打开目标，权限使用平台默认值；
-3. 若打开返回 `EEXIST`，映射为 `PROJECT_CONFIGURATION_ALREADY_EXISTS`，不读取、不截断、不删除现有文件；
-4. 对本调用新建的句柄写入完整 UTF-8 source，执行 `sync`，再关闭句柄；
-5. 写入或同步失败时关闭句柄，并仅对本调用已经独占创建的目标做 best-effort 删除，然后重新抛出原始失败；
-6. 只有完整写入、同步与关闭完成后才向 Control Center 报告成功。
+1. 只使用固定最终 basename `.devcontrol.toml`，目标目录来自本次 `inspectProjectDirectory` 的结果；Node adapter 在同一目录生成不可预测的 `.devcontrol.toml.tmp-<uuid>` 暂存名，不接受 Renderer 提供的文件名或路径；
+2. 以 Node 独占创建标志 `wx` 打开暂存文件，写入完整 UTF-8 source，执行 `sync`，再关闭句柄；最终路径此时仍不存在；
+3. 使用同目录硬链接 `link(stagingPath, targetPath)` 发布最终文件。硬链接创建具有 no-replace 语义；若最终路径已存在，返回 `EEXIST`，映射为 `PROJECT_CONFIGURATION_ALREADY_EXISTS`，不读取、不截断、不删除现有文件；
+4. 发布成功或失败后只对本调用的高熵暂存路径做 best-effort 删除；绝不因失败删除最终 `.devcontrol.toml`；暂存清理失败不得替换原始发布错误，也不得把已经成功发布的完整配置改判为失败；
+5. 写入、同步或关闭暂存文件失败时，不执行 `link`，关闭句柄并清理暂存路径，然后重新抛出原始失败；
+6. 只有完整写入、同步、关闭和 `link` 发布完成后才向 Control Center 报告成功。文件系统若不支持硬链接，操作安全失败，不回退到可能覆盖或暴露部分最终文件的 rename/copy 方案。
 
-该方案保证并发创建中最多一个调用成功，且普通写入失败不会留下由本调用产生的残缺配置。它是“atomic-ish”而非断电级事务：在进程或系统于创建与清理之间崩溃的极窄窗口中，仍可能留下部分文件。Node 没有提供统一跨平台、同时具备 rename 原子性与 no-replace 语义的高层操作；本票据优先保证“绝不覆盖已有文件”。后续读取会把残缺文件作为 `CONFIG_TOML_INVALID` 处理，而不会执行。
+该方案保证并发创建中最多一个调用成功，且最终路径只会指向已经完整写入并同步的文件。崩溃可能留下高熵暂存文件，或在发布后留下指向同一完整内容的额外暂存硬链接，但不会留下部分 `.devcontrol.toml`，也不会覆盖或删除既有配置。它保证命名空间发布的 no-replace 原子性，不声称提供断电级目录事务。
 
 除 `EEXIST` 外，`ENOENT`、`ENOTDIR`、`EACCES`、`EPERM` 映射为带项目 ID 的 `PROJECT_DIRECTORY_UNAVAILABLE`。为保留项目 ID，Node adapter 可抛无 ID 的领域错误，Control Center 在跨越公开接口前重建资源信息。其他错误保持未知错误，由 Main 脱敏为 `UNEXPECTED_ERROR`。
 
@@ -495,7 +495,7 @@ Main 复用统一的 `resultOf`/授权包装语义：
 ```ts
 type ConfigurationWorkflowState =
   | { kind: 'editing'; draft: ProjectConfigurationDraft; error?: ActionableError }
-  | { kind: 'previewing'; draft: ProjectConfigurationDraft; preview: ProjectConfigurationPreview }
+  | { kind: 'previewing'; draft: ProjectConfigurationDraft; preview: ProjectConfigurationPreview; error?: ActionableError }
   | { kind: 'creating'; draft: ProjectConfigurationDraft; preview: ProjectConfigurationPreview }
   | { kind: 'created'; result: ProjectConfigurationCreated }
 ```
@@ -504,7 +504,7 @@ type ConfigurationWorkflowState =
 
 1. 用户从一个 available 项目进入配置页；Renderer 只保存其 `projectId` 和用于展示的项目快照。
 2. 编辑控件产生不可变的结构化 draft。
-3. 点击 `Preview configuration` 调用 `desktop.projectConfigurations.preview(projectId, draft)`。
+3. 点击 `Preview configuration` 为本次请求分配单调递增的本地序号，复制当前 draft 后调用 `desktop.projectConfigurations.preview(projectId, draft)`；任何后续编辑或新预览都会推进序号，较旧的异步响应必须被忽略，不能覆盖新草稿或新预览。
 4. 成功后保存同一份 draft 快照和返回的 source，显示只读预览。
 5. 点击 `Back to editing` 回到该 draft。任何字段修改、行增删、排序变化或平台区启停都立即清除旧 preview；创建按钮只存在于 `previewing` 状态，因此过期预览不可提交。
 6. 点击 `Create configuration` 时进入 `creating`，按钮禁用，并将 `previewing` 状态保存的 draft 重新传给 `create`。Control Center 再次完整校验，不信任预览。
@@ -550,7 +550,7 @@ type ConfigurationWorkflowState =
 | ProjectRegistry contract | `get` 命中/未命中 | 返回项目或 null；不访问文件系统。 |
 | Host Runtime contract | 目标不存在 | 创建完整 UTF-8 文件，内容精确匹配。 |
 | Host Runtime contract | 目标已存在/并发创建 | 现有字节保持不变；一个创建成功，其余得到 already exists。 |
-| Host Runtime contract | 写入失败 | 关闭句柄并 best-effort 清理本次新文件；错误不吞掉。 |
+| Host Runtime contract | 写入失败 | 不发布最终路径；关闭句柄并 best-effort 清理本次暂存文件，错误不吞掉。 |
 | Host Runtime contract | `.env` 引用 | 只写配置文本，不读取 `.env` 内容。 |
 | Control Center | 合法 preview | 只返回 source，不创建文件。 |
 | Control Center | 合法 create | 再次查项目、检查目录、校验 draft，然后只调用一次创建。 |
