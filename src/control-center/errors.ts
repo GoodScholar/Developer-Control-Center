@@ -28,6 +28,15 @@ export function invalidProjectId(): ControlCenterError {
   })
 }
 
+export function projectNotFound(projectId: string): ControlCenterError {
+  return new ControlCenterError({
+    code: 'PROJECT_NOT_FOUND',
+    resource: { kind: 'project', id: projectId },
+    message: 'The registered project could not be found.',
+    nextAction: 'Return to the project list and refresh it.'
+  })
+}
+
 export function configurationError(
   code: string,
   fieldPath: string | undefined,
@@ -54,4 +63,20 @@ export function projectConfigurationAlreadyExists(projectId?: string): ControlCe
     'Open .devcontrol.toml in an external editor to review or change it.',
     projectId
   )
+}
+
+export function withProjectId(error: ControlCenterError, projectId: string): ControlCenterError {
+  if (error.detail.resource.kind === 'project_configuration') {
+    return new ControlCenterError({
+      ...error.detail,
+      resource: { kind: 'project_configuration', projectId }
+    })
+  }
+  if (error.detail.resource.kind === 'project') {
+    return new ControlCenterError({
+      ...error.detail,
+      resource: { kind: 'project', id: projectId }
+    })
+  }
+  return error
 }

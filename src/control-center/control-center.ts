@@ -1,7 +1,19 @@
 import { randomUUID } from 'node:crypto'
-import type { ProjectSnapshot } from '../shared/contracts'
-import { ControlCenterError, invalidProjectId, projectDirectoryUnavailable } from './errors'
-import type { HostRuntime } from './host-runtime'
+import type {
+  ProjectConfigurationCreated,
+  ProjectConfigurationDraft,
+  ProjectConfigurationPreview,
+  ProjectSnapshot
+} from '../shared/contracts'
+import {
+  ControlCenterError,
+  invalidProjectId,
+  projectDirectoryUnavailable,
+  projectNotFound,
+  withProjectId
+} from './errors'
+import type { HostRuntime, ProjectDirectory } from './host-runtime'
+import { buildProjectConfigurationPreview } from './project-configuration'
 import type { ProjectRegistry, StoredProject } from './project-registry'
 
 export class ControlCenter {
@@ -32,6 +44,27 @@ export class ControlCenter {
     this.projectRegistry.remove(projectId)
   }
 
+  async previewProjectConfiguration(
+    projectId: string,
+    draft: ProjectConfigurationDraft
+  ): Promise<ProjectConfigurationPreview> {
+    return (await this.prepareProjectConfiguration(projectId, draft)).preview
+  }
+
+  async createProjectConfiguration(
+    projectId: string,
+    draft: ProjectConfigurationDraft
+  ): Promise<ProjectConfigurationCreated> {
+    const prepared = await this.prepareProjectConfiguration(projectId, draft)
+    try {
+      await this.hostRuntime.createProjectConfiguration(prepared.rootPath, prepared.preview.source)
+    } catch (error) {
+      if (error instanceof ControlCenterError) throw withProjectId(error, projectId)
+      throw error
+    }
+    return { relativePath: '.devcontrol.toml' }
+  }
+
   close(): void {
     this.projectRegistry.close()
   }
@@ -54,6 +87,31 @@ export class ControlCenter {
         availability: 'missing',
         problem: projectDirectoryUnavailable(project.rootPath, project.id).detail
       }
+    }
+  }
+
+  private async prepareProjectConfiguration(
+    projectId: string,
+    draft: ProjectConfigurationDraft
+  ): Promise<{ rootPath: string; preview: ProjectConfigurationPreview }> {
+    if (typeof projectId !== 'string' || projectId.trim().length === 0) throw invalidProjectId()
+    const project = this.projectRegistry.get(projectId)
+    if (project === null) throw projectNotFound(projectId)
+    let directory: ProjectDirectory
+    try {
+      directory = await this.hostRuntime.inspectProjectDirectory(project.rootPath)
+    } catch (error) {
+      if (error instanceof ControlCenterError) throw withProjectId(error, projectId)
+      throw error
+    }
+    try {
+      return {
+        rootPath: directory.canonicalPath,
+        preview: buildProjectConfigurationPreview(draft)
+      }
+    } catch (error) {
+      if (error instanceof ControlCenterError) throw withProjectId(error, projectId)
+      throw error
     }
   }
 }

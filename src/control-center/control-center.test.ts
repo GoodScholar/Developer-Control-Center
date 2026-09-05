@@ -1,12 +1,16 @@
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { ControlCenter } from './control-center'
+import { projectConfigurationAlreadyExists } from './errors'
 import type { HostRuntime } from './host-runtime'
 import { NodeHostRuntime } from './node-host-runtime'
+import type { ProjectRegistry } from './project-registry'
 import { SqliteProjectRegistry } from './sqlite-project-registry'
 import { TestHostRuntime } from './testing/test-host-runtime'
+import { TestProjectRegistry } from './testing/test-project-registry'
+import type { ProjectConfigurationDraft } from '../shared/contracts'
 
 const temporaryRoots: string[] = []
 
@@ -24,6 +28,28 @@ function createTestControlCenter(
     hostRuntime,
     nextId
   )
+}
+
+const configurationDraft: ProjectConfigurationDraft = {
+  service: {
+    id: 'web',
+    program: 'pnpm',
+    args: ['dev'],
+    workingDirectory: '.',
+    shell: false,
+    envFiles: ['.env'],
+    env: [{ key: 'NODE_ENV', value: 'development' }]
+  }
+}
+
+function configuredProjectControlCenter(): { center: ControlCenter; host: TestHostRuntime } {
+  const registry = new TestProjectRegistry([
+    { id: 'project-1', name: 'sample-project', rootPath: '/stored/project' }
+  ])
+  const host = new TestHostRuntime(new Map([
+    ['/stored/project', { canonicalPath: '/canonical/project', name: 'sample-project' }]
+  ]))
+  return { center: new ControlCenter(registry, host), host }
 }
 
 test('registers a project and restores it from local metadata', async () => {
@@ -138,4 +164,105 @@ test('rejects an empty project identifier', async () => {
     }
   })
   controlCenter.close()
+})
+
+test('previews a registered project without creating a file', async () => {
+  const { center, host } = configuredProjectControlCenter()
+
+  const preview = await center.previewProjectConfiguration('project-1', configurationDraft)
+
+  expect(preview.source).toContain('schema_version = 1')
+  expect(preview.source).toContain('NODE_ENV = "development"')
+  expect(host.createdProjectConfigurations).toEqual([])
+})
+
+test('revalidates and creates in the canonical registered project root', async () => {
+  const { center, host } = configuredProjectControlCenter()
+  await center.previewProjectConfiguration('project-1', configurationDraft)
+
+  const result = await center.createProjectConfiguration('project-1', configurationDraft)
+
+  expect(result).toEqual({ relativePath: '.devcontrol.toml' })
+  expect(host.createdProjectConfigurations).toEqual([
+    {
+      rootPath: '/canonical/project',
+      source: expect.stringContaining('[services.web]')
+    }
+  ])
+})
+
+test('rejects a changed invalid draft at create time without writing', async () => {
+  const { center, host } = configuredProjectControlCenter()
+  await center.previewProjectConfiguration('project-1', configurationDraft)
+  const changed = structuredClone(configurationDraft)
+  changed.service.workingDirectory = '../outside'
+
+  await expect(center.createProjectConfiguration('project-1', changed)).rejects.toMatchObject({
+    detail: {
+      code: 'CONFIG_PATH_OUTSIDE_PROJECT',
+      resource: { kind: 'project_configuration', projectId: 'project-1' },
+      fieldPath: '$.service.workingDirectory'
+    }
+  })
+  expect(host.createdProjectConfigurations).toEqual([])
+})
+
+test.each(['', '   '])('rejects an invalid project id before registry access', async (projectId) => {
+  const registry = { get: vi.fn() } as unknown as ProjectRegistry
+  const center = new ControlCenter(registry, {} as HostRuntime)
+
+  await expect(center.previewProjectConfiguration(projectId, configurationDraft)).rejects.toMatchObject({
+    detail: { code: 'INVALID_PROJECT_ID', resource: { kind: 'project' } }
+  })
+  expect(registry.get).not.toHaveBeenCalled()
+})
+
+test('distinguishes an unknown registration from a missing directory', async () => {
+  const host = new TestHostRuntime(new Map())
+  const inspect = vi.spyOn(host, 'inspectProjectDirectory')
+  const unknown = new ControlCenter(new TestProjectRegistry(), host)
+
+  await expect(unknown.previewProjectConfiguration('project-404', configurationDraft)).rejects.toMatchObject({
+    detail: { code: 'PROJECT_NOT_FOUND', resource: { kind: 'project', id: 'project-404' } }
+  })
+  expect(inspect).not.toHaveBeenCalled()
+
+  const missing = new ControlCenter(
+    new TestProjectRegistry([{ id: 'project-1', name: 'missing', rootPath: '/missing' }]),
+    new TestHostRuntime(new Map())
+  )
+  await expect(missing.previewProjectConfiguration('project-1', configurationDraft)).rejects.toMatchObject({
+    detail: { code: 'PROJECT_DIRECTORY_UNAVAILABLE', resource: { kind: 'project', id: 'project-1' } }
+  })
+})
+
+test('adds the trusted project id to an already-exists create failure', async () => {
+  const { center, host } = configuredProjectControlCenter()
+  vi.spyOn(host, 'createProjectConfiguration').mockRejectedValueOnce(projectConfigurationAlreadyExists())
+
+  await expect(center.createProjectConfiguration('project-1', configurationDraft)).rejects.toMatchObject({
+    detail: {
+      code: 'PROJECT_CONFIGURATION_ALREADY_EXISTS',
+      resource: { kind: 'project_configuration', projectId: 'project-1' }
+    }
+  })
+})
+
+test('queries the registration and directory again for every create', async () => {
+  const registry = new TestProjectRegistry([
+    { id: 'project-1', name: 'sample-project', rootPath: '/stored/project' }
+  ])
+  const host = new TestHostRuntime(new Map([
+    ['/stored/project', { canonicalPath: '/canonical/project', name: 'sample-project' }]
+  ]))
+  const get = vi.spyOn(registry, 'get')
+  const inspect = vi.spyOn(host, 'inspectProjectDirectory')
+  const center = new ControlCenter(registry, host)
+
+  await center.createProjectConfiguration('project-1', configurationDraft)
+  await center.createProjectConfiguration('project-1', configurationDraft)
+
+  expect(get).toHaveBeenCalledTimes(2)
+  expect(inspect).toHaveBeenCalledTimes(2)
+  expect(host.createdProjectConfigurations).toHaveLength(2)
 })
