@@ -167,7 +167,7 @@ Developer Control Center 是工作名称。产品为 Apache-2.0 开源项目；�
 rg -n 'Tauri|Rust 核心|Rust Host Runtime|Cargo' .scratch/developer-control-center-mvp docs/adr
 ~~~
 
-Expected: 仅允许命中带 `superseded by ADR-0005` 的 ADR-0003；有效规格和票据无命中。
+Expected: 仅允许命中带 `superseded by ADR-0005` 的 ADR-0003，以及 ADR-0005 中说明被替代方案的历史句子；有效规格和票据无命中。
 
 ~~~bash
 rg -n 'Electron|TypeScript Control Center|Node Host Runtime' .scratch/developer-control-center-mvp/spec.md .scratch/developer-control-center-mvp/issues docs/adr/0005-electron-typescript-desktop-architecture.md
