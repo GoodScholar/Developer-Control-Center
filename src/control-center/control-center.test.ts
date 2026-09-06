@@ -9,7 +9,7 @@ import {
   projectDirectoryUnavailable,
   projectNotFound
 } from './errors'
-import type { HostRuntime } from './host-runtime'
+import type { HostRuntime, PackageJsonDetectionInspection } from './host-runtime'
 import { NodeHostRuntime } from './node-host-runtime'
 import type { ProjectRegistry } from './project-registry'
 import { SqliteProjectRegistry } from './sqlite-project-registry'
@@ -65,6 +65,21 @@ function trustedProjectControlCenter(hostRuntime: HostRuntime): ControlCenter {
   }
   const registry = { get: () => project } as unknown as ProjectRegistry
   return new ControlCenter(registry, hostRuntime)
+}
+
+function detectionCenter(inspection: PackageJsonDetectionInspection): {
+  center: ControlCenter
+  host: TestHostRuntime
+  registry: TestProjectRegistry
+} {
+  const registry = new TestProjectRegistry([
+    { id: 'stored-project-id', name: 'sample-project', rootPath: '/stored/project' }
+  ])
+  const host = new TestHostRuntime(
+    new Map([['/stored/project', { canonicalPath: '/canonical/project', name: 'sample-project' }]]),
+    new Map([['/canonical/project', inspection]])
+  )
+  return { center: new ControlCenter(registry, host), host, registry }
 }
 
 test('registers a project and restores it from local metadata', async () => {
@@ -374,4 +389,73 @@ test('preserves a project-not-found error returned by the host runtime', async (
   })
 
   await expect(center.previewProjectConfiguration('renderer-project-id', configurationDraft)).rejects.toBe(expected)
+})
+
+test.each([
+  [{ kind: 'configuration-exists' }, { kind: 'none', reason: 'configuration-exists' }],
+  [{ kind: 'package-json-missing' }, { kind: 'none', reason: 'package-json-missing' }],
+  [{ kind: 'package-json', source: '{"scripts":{"test":"opaque"}}' }, { kind: 'none', reason: 'no-candidates' }]
+] as const)('maps host inspection to a none result', async (inspection, expected) => {
+  const { center } = detectionCenter(inspection)
+
+  await expect(center.detectProjectConfiguration('stored-project-id')).resolves.toEqual(expected)
+})
+
+test('returns a project-bound proposal from the canonical registered root', async () => {
+  const { center, host } = detectionCenter({
+    kind: 'package-json',
+    source: '{"packageManager":"pnpm@10.17.1","scripts":{"dev":"opaque","dev:api":"opaque-api"}}'
+  })
+
+  await expect(center.detectProjectConfiguration('stored-project-id')).resolves.toMatchObject({
+    kind: 'proposal',
+    proposal: {
+      projectId: 'stored-project-id',
+      candidates: [
+        { evidence: { scriptName: 'dev' }, draft: { id: 'dev', program: 'pnpm', args: ['run', 'dev'] } },
+        { evidence: { scriptName: 'dev:api' }, draft: { id: 'dev-api', program: 'pnpm', args: ['run', 'dev:api'] } }
+      ]
+    }
+  })
+  expect(host.packageJsonDetectionInspections).toEqual(['/canonical/project'])
+})
+
+test('rejects invalid and unknown project ids before host detection', async () => {
+  const registry = new TestProjectRegistry()
+  const host = new TestHostRuntime(new Map())
+  const center = new ControlCenter(registry, host)
+
+  await expect(center.detectProjectConfiguration(' ')).rejects.toMatchObject({
+    detail: { code: 'INVALID_PROJECT_ID' }
+  })
+  await expect(center.detectProjectConfiguration('missing')).rejects.toMatchObject({
+    detail: { code: 'PROJECT_NOT_FOUND', resource: { kind: 'project', id: 'missing' } }
+  })
+  expect(host.packageJsonDetectionInspections).toEqual([])
+})
+
+test('binds detector errors to the stored project id without manifest source', async () => {
+  const source = '{"scripts":{"dev":"secret-script-body","dev:api":7}}'
+  const { center } = detectionCenter({ kind: 'package-json', source })
+
+  const error = await center.detectProjectConfiguration('stored-project-id').catch((value) => value)
+
+  expect(error).toMatchObject({ detail: {
+    code: 'PACKAGE_JSON_SCRIPT_INVALID',
+    resource: { kind: 'project', id: 'stored-project-id' },
+    fieldPath: '$.scripts["dev:api"]'
+  } })
+  expect(JSON.stringify(error)).not.toContain(source)
+  expect(JSON.stringify(error)).not.toContain('secret-script-body')
+})
+
+test('keeps registration after detection failure', async () => {
+  const { center } = detectionCenter({ kind: 'package-json', source: '{invalid' })
+
+  await expect(center.detectProjectConfiguration('stored-project-id')).rejects.toMatchObject({
+    detail: { code: 'PACKAGE_JSON_INVALID' }
+  })
+  await expect(center.listProjects()).resolves.toEqual([expect.objectContaining({
+    id: 'stored-project-id', availability: 'available'
+  })])
 })

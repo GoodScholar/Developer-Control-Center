@@ -1,5 +1,14 @@
 import type { ActionableError } from '../shared/contracts'
 
+const packageJsonDetectionCodes = new Set([
+  'PACKAGE_JSON_READ_FAILED',
+  'PACKAGE_JSON_OUTSIDE_PROJECT',
+  'PACKAGE_JSON_INVALID',
+  'PACKAGE_JSON_ROOT_INVALID',
+  'PACKAGE_JSON_SCRIPTS_INVALID',
+  'PACKAGE_JSON_SCRIPT_INVALID'
+])
+
 export class ControlCenterError extends Error {
   constructor(readonly detail: ActionableError) {
     super(detail.message)
@@ -113,4 +122,17 @@ export function withProjectId(error: ControlCenterError, projectId: string): Con
     })
   }
   return error
+}
+
+export function withPackageJsonDetectionProjectId(
+  error: ControlCenterError,
+  projectId: string
+): ControlCenterError {
+  if (error.detail.resource.kind !== 'project' || !packageJsonDetectionCodes.has(error.detail.code)) {
+    return error
+  }
+  return new ControlCenterError({
+    ...error.detail,
+    resource: { kind: 'project', id: projectId }
+  })
 }

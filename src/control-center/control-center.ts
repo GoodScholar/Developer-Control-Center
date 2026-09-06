@@ -10,11 +10,14 @@ import {
   invalidProjectId,
   projectDirectoryUnavailable,
   projectNotFound,
+  withPackageJsonDetectionProjectId,
   withProjectId
 } from './errors'
 import type { HostRuntime, ProjectDirectory } from './host-runtime'
+import { detectPackageJsonCandidates } from './package-json-detector'
 import { buildProjectConfigurationPreview } from './project-configuration'
 import type { ProjectRegistry, StoredProject } from './project-registry'
+import type { DetectionProposalResult } from '../shared/contracts'
 
 export class ControlCenter {
   constructor(
@@ -42,6 +45,37 @@ export class ControlCenter {
   async unregisterProject(projectId: string): Promise<void> {
     if (!projectId) throw invalidProjectId()
     this.projectRegistry.remove(projectId)
+  }
+
+  async detectProjectConfiguration(projectId: string): Promise<DetectionProposalResult> {
+    if (typeof projectId !== 'string' || projectId.trim().length === 0) throw invalidProjectId()
+    const project = this.projectRegistry.get(projectId)
+    if (project === null) throw projectNotFound(projectId)
+    let directory: ProjectDirectory
+    try {
+      directory = await this.hostRuntime.inspectProjectDirectory(project.rootPath)
+    } catch (error) {
+      if (error instanceof ControlCenterError) throw withProjectId(error, project.id)
+      throw error
+    }
+    try {
+      const inspection = await this.hostRuntime.inspectPackageJsonDetection(directory.canonicalPath)
+      if (inspection.kind === 'configuration-exists') {
+        return { kind: 'none', reason: 'configuration-exists' }
+      }
+      if (inspection.kind === 'package-json-missing') {
+        return { kind: 'none', reason: 'package-json-missing' }
+      }
+      const candidates = detectPackageJsonCandidates(inspection.source)
+      return candidates.length === 0
+        ? { kind: 'none', reason: 'no-candidates' }
+        : { kind: 'proposal', proposal: { projectId: project.id, candidates } }
+    } catch (error) {
+      if (error instanceof ControlCenterError) {
+        throw withPackageJsonDetectionProjectId(error, project.id)
+      }
+      throw error
+    }
   }
 
   async previewProjectConfiguration(
