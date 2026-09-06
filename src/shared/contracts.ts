@@ -121,4 +121,7 @@ export interface DesktopApi {
       draft: ProjectConfigurationDraft
     ): Promise<ActionResult<ProjectConfigurationCreated>>
   }
+  detectionProposals: {
+    detect(projectId: string): Promise<ActionResult<DetectionProposalResult>>
+  }
 }

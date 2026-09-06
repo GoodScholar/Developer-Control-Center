@@ -11,7 +11,7 @@ test('opens an empty project list', async ({}, testInfo) => {
     await expect(page.getByText('No projects yet')).toBeVisible()
     await expect.poll(() => page.evaluate(() => {
       const candidate = window as unknown as {
-        desktop?: { projects?: object; projectConfigurations?: object }
+        desktop?: { projects?: object; projectConfigurations?: object; detectionProposals?: object }
       }
       return {
         hasRequire: 'require' in window,
@@ -22,14 +22,18 @@ test('opens an empty project list', async ({}, testInfo) => {
           : [],
         configurationKeys: candidate.desktop?.projectConfigurations
           ? Object.keys(candidate.desktop.projectConfigurations).sort()
+          : [],
+        detectionProposalKeys: candidate.desktop?.detectionProposals
+          ? Object.keys(candidate.desktop.detectionProposals).sort()
           : []
       }
     })).toEqual({
       hasRequire: false,
       hasProcess: false,
-      desktopKeys: ['projectConfigurations', 'projects'],
+      desktopKeys: ['detectionProposals', 'projectConfigurations', 'projects'],
       projectKeys: ['add', 'list', 'remove'],
-      configurationKeys: ['create', 'preview']
+      configurationKeys: ['create', 'preview'],
+      detectionProposalKeys: ['detect']
     })
 
     const originalUrl = page.url()

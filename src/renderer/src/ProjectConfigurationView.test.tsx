@@ -18,7 +18,10 @@ const desktop: DesktopApi = {
     add: async () => ({ ok: true, value: null }),
     remove: async () => ({ ok: true, value: null })
   },
-  projectConfigurations: { preview, create }
+  projectConfigurations: { preview, create },
+  detectionProposals: {
+    detect: async () => ({ ok: true, value: { kind: 'none', reason: 'no-candidates' } })
+  }
 }
 
 beforeEach(() => vi.resetAllMocks())

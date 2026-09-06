@@ -15,5 +15,10 @@ contextBridge.exposeInMainWorld('desktop', {
     create: (projectId: string, draft: ProjectConfigurationDraft) =>
       ipcRenderer.invoke('project-configurations:create', { projectId, draft }) as
         ReturnType<DesktopApi['projectConfigurations']['create']>
+  },
+  detectionProposals: {
+    detect: (projectId: string) =>
+      ipcRenderer.invoke('detection-proposals:detect', { projectId }) as
+        ReturnType<DesktopApi['detectionProposals']['detect']>
   }
 } satisfies DesktopApi)

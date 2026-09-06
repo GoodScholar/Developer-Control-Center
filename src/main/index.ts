@@ -6,6 +6,7 @@ import { NodeHostRuntime } from '../control-center/node-host-runtime'
 import { SqliteProjectRegistry } from '../control-center/sqlite-project-registry'
 import { createMainWindow } from './create-window'
 import { createProjectDirectoryPicker } from './project-directory-picker'
+import { registerDetectionProposalIpc } from './register-detection-proposal-ipc'
 import { registerProjectConfigurationIpc } from './register-project-configuration-ipc'
 import { registerProjectIpc } from './register-project-ipc'
 
@@ -32,6 +33,7 @@ void app.whenReady().then(() => {
     isTrustedSender
   )
   registerProjectConfigurationIpc(ipcMain, controlCenter, isTrustedSender)
+  registerDetectionProposalIpc(ipcMain, controlCenter, isTrustedSender)
 })
 
 app.on('before-quit', () => {
