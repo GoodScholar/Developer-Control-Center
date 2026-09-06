@@ -5,13 +5,14 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { ControlCenter } from './control-center'
 import {
   invalidProjectId,
+  packageJsonDetectionError,
   projectConfigurationAlreadyExists,
   projectDirectoryUnavailable,
   projectNotFound
 } from './errors'
 import type { HostRuntime, PackageJsonDetectionInspection } from './host-runtime'
 import { NodeHostRuntime } from './node-host-runtime'
-import type { ProjectRegistry } from './project-registry'
+import type { ProjectRegistry, StoredProject } from './project-registry'
 import { SqliteProjectRegistry } from './sqlite-project-registry'
 import { TestHostRuntime } from './testing/test-host-runtime'
 import { TestProjectRegistry } from './testing/test-project-registry'
@@ -67,14 +68,44 @@ function trustedProjectControlCenter(hostRuntime: HostRuntime): ControlCenter {
   return new ControlCenter(registry, hostRuntime)
 }
 
+class RequestedProjectRegistry implements ProjectRegistry {
+  constructor(
+    private readonly requestId: string,
+    private readonly project: StoredProject
+  ) {}
+
+  list(): StoredProject[] {
+    return [this.project]
+  }
+
+  get(projectId: string): StoredProject | null {
+    return projectId === this.requestId ? this.project : null
+  }
+
+  insert(): void {
+    throw new Error('This registry is only for detection lookup tests.')
+  }
+
+  remove(): void {
+    throw new Error('This registry is only for detection lookup tests.')
+  }
+
+  close(): void {}
+}
+
+const detectionRequestId = 'renderer-project-id'
+const storedDetectionProject: StoredProject = {
+  id: 'stored-project-id',
+  name: 'sample-project',
+  rootPath: '/stored/project'
+}
+
 function detectionCenter(inspection: PackageJsonDetectionInspection): {
   center: ControlCenter
   host: TestHostRuntime
-  registry: TestProjectRegistry
+  registry: RequestedProjectRegistry
 } {
-  const registry = new TestProjectRegistry([
-    { id: 'stored-project-id', name: 'sample-project', rootPath: '/stored/project' }
-  ])
+  const registry = new RequestedProjectRegistry(detectionRequestId, storedDetectionProject)
   const host = new TestHostRuntime(
     new Map([['/stored/project', { canonicalPath: '/canonical/project', name: 'sample-project' }]]),
     new Map([['/canonical/project', inspection]])
@@ -398,7 +429,7 @@ test.each([
 ] as const)('maps host inspection to a none result', async (inspection, expected) => {
   const { center } = detectionCenter(inspection)
 
-  await expect(center.detectProjectConfiguration('stored-project-id')).resolves.toEqual(expected)
+  await expect(center.detectProjectConfiguration(detectionRequestId)).resolves.toEqual(expected)
 })
 
 test('returns a project-bound proposal from the canonical registered root', async () => {
@@ -407,7 +438,7 @@ test('returns a project-bound proposal from the canonical registered root', asyn
     source: '{"packageManager":"pnpm@10.17.1","scripts":{"dev":"opaque","dev:api":"opaque-api"}}'
   })
 
-  await expect(center.detectProjectConfiguration('stored-project-id')).resolves.toMatchObject({
+  await expect(center.detectProjectConfiguration(detectionRequestId)).resolves.toMatchObject({
     kind: 'proposal',
     proposal: {
       projectId: 'stored-project-id',
@@ -421,7 +452,7 @@ test('returns a project-bound proposal from the canonical registered root', asyn
 })
 
 test('rejects invalid and unknown project ids before host detection', async () => {
-  const registry = new TestProjectRegistry()
+  const registry = new RequestedProjectRegistry(detectionRequestId, storedDetectionProject)
   const host = new TestHostRuntime(new Map())
   const center = new ControlCenter(registry, host)
 
@@ -438,7 +469,7 @@ test('binds detector errors to the stored project id without manifest source', a
   const source = '{"scripts":{"dev":"secret-script-body","dev:api":7}}'
   const { center } = detectionCenter({ kind: 'package-json', source })
 
-  const error = await center.detectProjectConfiguration('stored-project-id').catch((value) => value)
+  const error = await center.detectProjectConfiguration(detectionRequestId).catch((value) => value)
 
   expect(error).toMatchObject({ detail: {
     code: 'PACKAGE_JSON_SCRIPT_INVALID',
@@ -449,13 +480,75 @@ test('binds detector errors to the stored project id without manifest source', a
   expect(JSON.stringify(error)).not.toContain('secret-script-body')
 })
 
-test('keeps registration after detection failure', async () => {
-  const { center } = detectionCenter({ kind: 'package-json', source: '{invalid' })
+test.each([
+  'PACKAGE_JSON_READ_FAILED',
+  'PACKAGE_JSON_OUTSIDE_PROJECT',
+  'PACKAGE_JSON_INVALID',
+  'PACKAGE_JSON_ROOT_INVALID',
+  'PACKAGE_JSON_SCRIPTS_INVALID',
+  'PACKAGE_JSON_SCRIPT_INVALID'
+])('binds %s to the stored project id', async (code) => {
+  const registry = new RequestedProjectRegistry(detectionRequestId, storedDetectionProject)
+  const host = new TestHostRuntime(
+    new Map([['/stored/project', { canonicalPath: '/canonical/project', name: 'sample-project' }]]),
+    new Map(),
+    new Map([['/canonical/project', packageJsonDetectionError(code, undefined, 'fixed', 'fixed')]])
+  )
+  const center = new ControlCenter(registry, host)
 
-  await expect(center.detectProjectConfiguration('stored-project-id')).rejects.toMatchObject({
+  await expect(center.detectProjectConfiguration(detectionRequestId)).rejects.toMatchObject({
+    detail: { code, resource: { kind: 'project', id: 'stored-project-id' } }
+  })
+})
+
+test('keeps non-package detection errors unchanged', async () => {
+  const identityError = invalidProjectId()
+  const notFoundError = projectNotFound('host-project-id')
+  const rawError = new Error('raw-detection-sentinel')
+
+  for (const expected of [identityError, notFoundError, rawError]) {
+    const registry = new RequestedProjectRegistry(detectionRequestId, storedDetectionProject)
+    const host = new TestHostRuntime(
+      new Map([['/stored/project', { canonicalPath: '/canonical/project', name: 'sample-project' }]]),
+      new Map(),
+      new Map([['/canonical/project', expected]])
+    )
+    const center = new ControlCenter(registry, host)
+
+    await expect(center.detectProjectConfiguration(detectionRequestId)).rejects.toBe(expected)
+  }
+})
+
+test('binds a directory error to the stored project id during detection', async () => {
+  const registry = new RequestedProjectRegistry(detectionRequestId, storedDetectionProject)
+  const center = new ControlCenter(registry, new TestHostRuntime(new Map()))
+
+  await expect(center.detectProjectConfiguration(detectionRequestId)).rejects.toMatchObject({
+    detail: {
+      code: 'PROJECT_DIRECTORY_UNAVAILABLE',
+      resource: { kind: 'project', id: 'stored-project-id' }
+    }
+  })
+})
+
+test('keeps a publicly registered project after later detection failure', async () => {
+  const rootPath = '/registration/project'
+  const canonicalPath = '/canonical/registration/project'
+  const host = new TestHostRuntime(
+    new Map([
+      [rootPath, { canonicalPath, name: 'sample-project' }],
+      [canonicalPath, { canonicalPath, name: 'sample-project' }]
+    ]),
+    new Map([[canonicalPath, { kind: 'package-json', source: '{invalid' }]])
+  )
+  const center = new ControlCenter(new TestProjectRegistry(), host, () => 'registered-project-id')
+
+  const registered = await center.registerProject(rootPath)
+
+  await expect(center.detectProjectConfiguration(registered.id)).rejects.toMatchObject({
     detail: { code: 'PACKAGE_JSON_INVALID' }
   })
   await expect(center.listProjects()).resolves.toEqual([expect.objectContaining({
-    id: 'stored-project-id', availability: 'available'
+    id: 'registered-project-id', availability: 'available'
   })])
 })
