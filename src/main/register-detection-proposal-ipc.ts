@@ -19,11 +19,11 @@ function requestFrom(value: unknown): { projectId: string } {
     )
   }
   if (!Object.hasOwn(value, 'projectId')) throw invalidProjectId()
-  const unknown = Object.keys(value).find((key) => key !== 'projectId')
+  const unknown = Reflect.ownKeys(value).find((key) => key !== 'projectId')
   if (unknown !== undefined) {
     throw packageJsonDetectionError(
       'DETECTION_REQUEST_UNKNOWN_FIELD',
-      `$.${unknown}`,
+      typeof unknown === 'string' ? `$.${unknown}` : '$',
       'The detection request contains an unknown field.',
       'Remove the unsupported request field.'
     )

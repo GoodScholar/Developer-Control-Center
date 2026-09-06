@@ -76,6 +76,35 @@ test.each([
   expect(detectProjectConfiguration).not.toHaveBeenCalled()
 })
 
+test('rejects a non-enumerable request field', async () => {
+  const { handlers, ipc } = captureHandlers()
+  const input = { projectId: 'project-1' }
+  Object.defineProperty(input, 'rootPath', { value: '/private' })
+  registerDetectionProposalIpc(ipc, controlCenter, () => true)
+
+  await expect(handlers.get('detection-proposals:detect')!({} as IpcMainInvokeEvent, input))
+    .resolves.toMatchObject({
+      ok: false,
+      error: { code: 'DETECTION_REQUEST_UNKNOWN_FIELD', fieldPath: '$.rootPath' }
+    })
+  expect(detectProjectConfiguration).not.toHaveBeenCalled()
+})
+
+test('rejects a Symbol request field without echoing its description', async () => {
+  const { handlers, ipc } = captureHandlers()
+  const hiddenField = Symbol('private-command')
+  const input = { projectId: 'project-1', [hiddenField]: 'npm run dev' }
+  registerDetectionProposalIpc(ipc, controlCenter, () => true)
+
+  const result = await handlers.get('detection-proposals:detect')!({} as IpcMainInvokeEvent, input)
+  expect(result).toMatchObject({
+    ok: false,
+    error: { code: 'DETECTION_REQUEST_UNKNOWN_FIELD', fieldPath: '$' }
+  })
+  expect(JSON.stringify(result)).not.toContain('private-command')
+  expect(detectProjectConfiguration).not.toHaveBeenCalled()
+})
+
 test('returns clone-safe proposals', async () => {
   const { handlers, ipc } = captureHandlers()
   detectProjectConfiguration.mockResolvedValue({
