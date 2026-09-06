@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, test, vi } from 'vitest'
 import type { ActionableError, DesktopApi, PackageJsonDetectionProposal, ProjectSnapshot } from '../../shared/contracts'
@@ -55,6 +55,11 @@ const detectionError: ActionableError = {
   resource: { kind: 'project_configuration', projectId: project.id },
   message: 'The package manifest could not be read.',
   nextAction: 'Configure the project manually.'
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  return { promise: new Promise<T>((next) => { resolve = next }), resolve }
 }
 
 test('adds and removes a selected project', async () => {
@@ -224,4 +229,140 @@ test('ignores detection completion after leaving the detecting view', async () =
   resolveDetect({ ok: true, value: { kind: 'proposal', proposal } })
   expect(await screen.findByRole('heading', { name: project.name })).toBeVisible()
   expect(screen.queryByRole('heading', { name: 'Review detected services' })).not.toBeInTheDocument()
+})
+
+test('merges a registered project after detection none into a late initial list snapshot', async () => {
+  const initialProject: Extract<ProjectSnapshot, { availability: 'available' }> = {
+    id: 'project-a', name: 'existing-project', rootPath: '/projects/existing-project', availability: 'available'
+  }
+  const addedProject: Extract<ProjectSnapshot, { availability: 'available' }> = {
+    id: 'project-b', name: 'added-project', rootPath: '/projects/added-project', availability: 'available'
+  }
+  const list = deferred<Awaited<ReturnType<DesktopApi['projects']['list']>>>()
+  const listProjects = vi.fn(() => list.promise)
+  const desktop: DesktopApi = {
+    projects: {
+      list: listProjects,
+      add: async () => ({ ok: true, value: addedProject }),
+      remove: async () => ({ ok: true, value: null })
+    },
+    projectConfigurations: {
+      preview: async () => ({ ok: true, value: { source: 'schema_version = 1\n' } }),
+      create: async () => ({ ok: true, value: { relativePath: '.devcontrol.toml' } })
+    },
+    detectionProposals: { detect: async () => ({ ok: true, value: { kind: 'none', reason: 'no-candidates' } }) }
+  }
+  const user = userEvent.setup()
+
+  render(<App desktop={desktop} />)
+  await waitFor(() => expect(listProjects).toHaveBeenCalledTimes(1))
+  await user.click(screen.getByRole('button', { name: 'Add project' }))
+  expect(await screen.findByRole('heading', { name: addedProject.name })).toBeVisible()
+  list.resolve({ ok: true, value: [initialProject] })
+
+  expect(await screen.findByRole('heading', { name: initialProject.name })).toBeVisible()
+  expect(screen.getByRole('heading', { name: addedProject.name })).toBeVisible()
+})
+
+test('keeps a registered project after proposal rejection when the initial list arrives late', async () => {
+  const initialProject: Extract<ProjectSnapshot, { availability: 'available' }> = {
+    id: 'project-a', name: 'existing-project', rootPath: '/projects/existing-project', availability: 'available'
+  }
+  const addedProject: Extract<ProjectSnapshot, { availability: 'available' }> = {
+    id: project.id, name: project.name, rootPath: project.rootPath, availability: 'available'
+  }
+  const list = deferred<Awaited<ReturnType<DesktopApi['projects']['list']>>>()
+  const listProjects = vi.fn(() => list.promise)
+  const desktop: DesktopApi = {
+    projects: {
+      list: listProjects,
+      add: async () => ({ ok: true, value: addedProject }),
+      remove: async () => ({ ok: true, value: null })
+    },
+    projectConfigurations: {
+      preview: async () => ({ ok: true, value: { source: 'schema_version = 1\n' } }),
+      create: async () => ({ ok: true, value: { relativePath: '.devcontrol.toml' } })
+    },
+    detectionProposals: { detect: async () => ({ ok: true, value: { kind: 'proposal', proposal } }) }
+  }
+  const user = userEvent.setup()
+
+  render(<App desktop={desktop} />)
+  await waitFor(() => expect(listProjects).toHaveBeenCalledTimes(1))
+  await user.click(screen.getByRole('button', { name: 'Add project' }))
+  await user.click(await screen.findByRole('button', { name: 'Reject suggestions' }))
+  list.resolve({ ok: true, value: [initialProject] })
+
+  expect(await screen.findByRole('heading', { name: initialProject.name })).toBeVisible()
+  expect(screen.getByRole('heading', { name: addedProject.name })).toBeVisible()
+})
+
+test('does not revive an old same-id project after a successful add then remove', async () => {
+  const initialProject: Extract<ProjectSnapshot, { availability: 'available' }> = {
+    id: 'project-a', name: 'existing-project', rootPath: '/projects/existing-project', availability: 'available'
+  }
+  const staleProject: Extract<ProjectSnapshot, { availability: 'available' }> = {
+    id: 'project-b', name: 'stale-project', rootPath: '/projects/stale-project', availability: 'available'
+  }
+  const replacementProject: Extract<ProjectSnapshot, { availability: 'available' }> = {
+    id: staleProject.id, name: 'replacement-project', rootPath: '/projects/replacement-project', availability: 'available'
+  }
+  const list = deferred<Awaited<ReturnType<DesktopApi['projects']['list']>>>()
+  const listProjects = vi.fn(() => list.promise)
+  const desktop: DesktopApi = {
+    projects: {
+      list: listProjects,
+      add: async () => ({ ok: true, value: replacementProject }),
+      remove: async () => ({ ok: true, value: null })
+    },
+    projectConfigurations: {
+      preview: async () => ({ ok: true, value: { source: 'schema_version = 1\n' } }),
+      create: async () => ({ ok: true, value: { relativePath: '.devcontrol.toml' } })
+    },
+    detectionProposals: { detect: async () => ({ ok: true, value: { kind: 'none', reason: 'no-candidates' } }) }
+  }
+  const user = userEvent.setup()
+
+  render(<App desktop={desktop} />)
+  await waitFor(() => expect(listProjects).toHaveBeenCalledTimes(1))
+  await user.click(screen.getByRole('button', { name: 'Add project' }))
+  await user.click(await screen.findByRole('button', { name: `Remove ${replacementProject.name}` }))
+  list.resolve({ ok: true, value: [initialProject, staleProject] })
+
+  expect(await screen.findByRole('heading', { name: initialProject.name })).toBeVisible()
+  expect(screen.queryByRole('heading', { name: staleProject.name })).not.toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: replacementProject.name })).not.toBeInTheDocument()
+})
+
+test('does not restore a late initial loading error after a successful mutation', async () => {
+  const loadingError: ActionableError = {
+    code: 'PROJECT_LIST_FAILED', resource: { kind: 'project' }, message: 'The old project list failed.', nextAction: 'Try again.'
+  }
+  const list = deferred<Awaited<ReturnType<DesktopApi['projects']['list']>>>()
+  const listProjects = vi.fn(() => list.promise)
+  const desktop: DesktopApi = {
+    projects: {
+      list: listProjects,
+      add: async () => ({ ok: true, value: project }),
+      remove: async () => ({ ok: true, value: null })
+    },
+    projectConfigurations: {
+      preview: async () => ({ ok: true, value: { source: 'schema_version = 1\n' } }),
+      create: async () => ({ ok: true, value: { relativePath: '.devcontrol.toml' } })
+    },
+    detectionProposals: { detect: async () => ({ ok: true, value: { kind: 'none', reason: 'no-candidates' } }) }
+  }
+  const user = userEvent.setup()
+
+  render(<App desktop={desktop} />)
+  await waitFor(() => expect(listProjects).toHaveBeenCalledTimes(1))
+  await user.click(screen.getByRole('button', { name: 'Add project' }))
+  expect(await screen.findByRole('heading', { name: project.name })).toBeVisible()
+  await act(async () => {
+    list.resolve({ ok: false, error: loadingError })
+    await Promise.resolve()
+  })
+
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: project.name })).toBeVisible()
 })

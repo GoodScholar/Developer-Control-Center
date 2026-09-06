@@ -17,25 +17,47 @@ type AppView =
   | { kind: 'proposal'; project: AvailableProject; proposal: PackageJsonDetectionProposal }
   | { kind: 'manual-configuration'; project: AvailableProject }
 
+type ProjectMutation =
+  | { kind: 'add'; project: ProjectSnapshot }
+  | { kind: 'remove'; projectId: string }
+
+function reconcileInitialProjects(initialProjects: ProjectSnapshot[], mutations: ProjectMutation[]): ProjectSnapshot[] {
+  const projects = new Map(initialProjects.map((project) => [project.id, project]))
+  for (const mutation of mutations) {
+    if (mutation.kind === 'add') projects.set(mutation.project.id, mutation.project)
+    else projects.delete(mutation.projectId)
+  }
+  return [...projects.values()]
+}
+
 export function App({ desktop }: AppProps) {
   const [projects, setProjects] = useState<ProjectSnapshot[]>([])
   const [error, setError] = useState<ActionableError | null>(null)
   const [view, setView] = useState<AppView>({ kind: 'list' })
   const detectionSequence = useRef(0)
   const detectionAlertRef = useRef<HTMLElement>(null)
+  const initialLoadPending = useRef(false)
+  const initialLoadMutations = useRef<ProjectMutation[]>([])
 
   useEffect(() => {
     let active = true
+    initialLoadPending.current = true
+    initialLoadMutations.current = []
+    const mutations = initialLoadMutations.current
     void desktop.projects.list().then((result) => {
       if (!active) return
+      initialLoadPending.current = false
       if (result.ok) {
-        setProjects(() => result.value)
+        setProjects(() => reconcileInitialProjects(result.value, mutations))
         setError(() => null)
-      } else {
+      } else if (mutations.length === 0) {
         setError(() => result.error)
       }
     })
-    return () => { active = false }
+    return () => {
+      active = false
+      initialLoadPending.current = false
+    }
   }, [desktop])
 
   useEffect(() => {
@@ -74,6 +96,7 @@ export function App({ desktop }: AppProps) {
     }
     if (result.value === null) return
     const addedProject = result.value
+    if (initialLoadPending.current) initialLoadMutations.current.push({ kind: 'add', project: addedProject })
     setProjects((current) => [...current.filter((project) => project.id !== addedProject.id), addedProject])
     setError(() => null)
     if (addedProject.availability === 'available') await detectAfterRegistration(addedProject)
@@ -85,6 +108,7 @@ export function App({ desktop }: AppProps) {
       setError(() => result.error)
       return
     }
+    if (initialLoadPending.current) initialLoadMutations.current.push({ kind: 'remove', projectId })
     setProjects((current) => current.filter((project) => project.id !== projectId))
     setError(() => null)
   }
