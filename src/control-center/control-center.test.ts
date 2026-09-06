@@ -36,7 +36,7 @@ function createTestControlCenter(
 }
 
 const configurationDraft: ProjectConfigurationDraft = {
-  service: {
+  services: [{
     id: 'web',
     program: 'pnpm',
     args: ['dev'],
@@ -44,7 +44,7 @@ const configurationDraft: ProjectConfigurationDraft = {
     shell: false,
     envFiles: ['.env'],
     env: [{ key: 'NODE_ENV', value: 'development' }]
-  }
+  }]
 }
 
 function configuredProjectControlCenter(): { center: ControlCenter; host: TestHostRuntime } {
@@ -210,13 +210,13 @@ test('rejects a changed invalid draft at create time without writing', async () 
   const { center, host } = configuredProjectControlCenter()
   await center.previewProjectConfiguration('project-1', configurationDraft)
   const changed = structuredClone(configurationDraft)
-  changed.service.workingDirectory = '../outside'
+  changed.services[0]!.workingDirectory = '../outside'
 
   await expect(center.createProjectConfiguration('project-1', changed)).rejects.toMatchObject({
     detail: {
       code: 'CONFIG_PATH_OUTSIDE_PROJECT',
       resource: { kind: 'project_configuration', projectId: 'project-1' },
-      fieldPath: '$.service.workingDirectory'
+      fieldPath: '$.services[0].workingDirectory'
     }
   })
   expect(host.createdProjectConfigurations).toEqual([])
@@ -303,7 +303,7 @@ test('binds a configuration error to the registered project id without leaking d
     ['/stored/project', { canonicalPath: '/canonical/project', name: 'sample-project' }]
   ])))
   const invalidDraft = structuredClone(configurationDraft)
-  invalidDraft.service.workingDirectory = '../outside'
+  invalidDraft.services[0]!.workingDirectory = '../outside'
 
   const error = await center.previewProjectConfiguration('renderer-project-id', invalidDraft).then(
     () => { throw new Error('Expected configuration preview to reject.') },
@@ -313,7 +313,7 @@ test('binds a configuration error to the registered project id without leaking d
   expect((error as { detail: unknown }).detail).toEqual({
     code: 'CONFIG_PATH_OUTSIDE_PROJECT',
     resource: { kind: 'project_configuration', projectId: 'stored-project-id' },
-    fieldPath: '$.service.workingDirectory',
+    fieldPath: '$.services[0].workingDirectory',
     message: 'The path leaves the project root.',
     nextAction: 'Choose a path inside the project root.'
   })

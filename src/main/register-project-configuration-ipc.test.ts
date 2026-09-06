@@ -10,7 +10,7 @@ type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown
 const trustedEvent = {} as IpcMainInvokeEvent
 const untrustedEvent = {} as IpcMainInvokeEvent
 const configurationDraft: ProjectConfigurationDraft = {
-  service: {
+  services: [{
     id: 'web',
     program: 'pnpm',
     args: ['dev'],
@@ -18,7 +18,7 @@ const configurationDraft: ProjectConfigurationDraft = {
     shell: false,
     envFiles: [],
     env: []
-  }
+  }]
 }
 const previewProjectConfiguration = vi.fn<ControlCenter['previewProjectConfiguration']>()
 const createProjectConfiguration = vi.fn<ControlCenter['createProjectConfiguration']>()
@@ -101,7 +101,7 @@ test('serializes configuration errors without stack or environment value', async
   const { handlers, ipc } = captureHandlers()
   previewProjectConfiguration.mockRejectedValue(configurationError(
     'CONFIG_ENVIRONMENT_KEY_DUPLICATE',
-    '$.service.env[1].key',
+    '$.services[0].env[1].key',
     'The environment variable name is duplicated.',
     'Keep one row for this environment variable.',
     'project-1'
@@ -110,15 +110,15 @@ test('serializes configuration errors without stack or environment value', async
 
   const result = await handlers.get('project-configurations:preview')!(trustedEvent, {
     projectId: 'project-1',
-    draft: { ...configurationDraft, service: { ...configurationDraft.service, env: [
+    draft: { services: [{ ...configurationDraft.services[0]!, env: [
       { key: 'SAFE_KEY', value: secretValue },
       { key: 'SAFE_KEY', value: secretValue }
-    ] } }
+    ] }] }
   })
 
   expect(result).toMatchObject({
     ok: false,
-    error: { code: 'CONFIG_ENVIRONMENT_KEY_DUPLICATE', fieldPath: '$.service.env[1].key' }
+    error: { code: 'CONFIG_ENVIRONMENT_KEY_DUPLICATE', fieldPath: '$.services[0].env[1].key' }
   })
   expect(JSON.stringify(result)).not.toContain(secretValue)
   expect(JSON.stringify(result)).not.toContain('stack')

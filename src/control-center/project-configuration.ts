@@ -12,7 +12,7 @@ const environmentKeyPattern = /^[A-Za-z_][A-Za-z0-9_]*$/
 const topLevelFields = new Set(['schema_version', 'services'])
 const serviceFields = new Set(['program', 'args', 'working_directory', 'shell', 'env_files', 'env', 'macos', 'windows'])
 const overrideFields = new Set(['program', 'args', 'env'])
-const draftFields = new Set(['service'])
+const draftFields = new Set(['services'])
 const draftServiceFields = new Set(['id', 'program', 'args', 'workingDirectory', 'shell', 'envFiles', 'env', 'macos', 'windows'])
 const environmentRowFields = new Set(['key', 'value'])
 const absolutePathPatterns = [/^\//, /^[A-Za-z]:/, /^\\\\/, /^\/\//, /^~/, /^[A-Za-z][A-Za-z0-9+.-]*:\/\//]
@@ -153,30 +153,50 @@ function normalizeDraftOverride(value: unknown, fieldPath: string): PlatformOver
     ...(Object.hasOwn(value, 'env') ? { env: normalizeEnvironmentRows(value.env, `${fieldPath}.env`) } : {})
   }
 }
+function normalizeDraftService(value: unknown, index: number): [string, DevelopmentServiceConfiguration] {
+  const base = `$.services[${index}]`
+  if (!isRecord(value)) fail('CONFIG_FIELD_TYPE_INVALID', base, 'The service draft has the wrong type.', 'Submit a structured service draft.')
+  rejectUnknown(value, draftServiceFields, base)
+  if (typeof value.id !== 'string' || !isValidServiceId(value.id)) fail('CONFIG_SERVICE_ID_INVALID', `${base}.id`, 'The service identifier is invalid.', 'Use 1-64 lowercase letters, numbers, and single hyphen-separated segments.')
+  if (typeof value.shell !== 'boolean') fail('CONFIG_FIELD_TYPE_INVALID', `${base}.shell`, 'Shell must be a boolean.', 'Use true or false.')
+  return [value.id, {
+    program: validateProgram(value.program, `${base}.program`),
+    args: assertStringArray(value.args, `${base}.args`),
+    workingDirectory: validatePortablePath(value.workingDirectory, `${base}.workingDirectory`, true),
+    shell: value.shell,
+    envFiles: normalizeEnvFiles(value.envFiles, `${base}.envFiles`),
+    env: normalizeEnvironmentRows(value.env, `${base}.env`),
+    ...(value.macos === undefined ? {} : { macos: normalizeDraftOverride(value.macos, `${base}.macos`)! }),
+    ...(value.windows === undefined ? {} : { windows: normalizeDraftOverride(value.windows, `${base}.windows`)! })
+  }]
+}
 function normalizeDraft(value: unknown): ProjectConfigurationV1 {
   if (!isRecord(value)) fail('CONFIG_FIELD_TYPE_INVALID', '$', 'The configuration draft has the wrong type.', 'Submit a structured configuration draft.')
   rejectUnknown(value, draftFields, '$')
-  if (!isRecord(value.service)) fail('CONFIG_FIELD_TYPE_INVALID', '$.service', 'The service draft has the wrong type.', 'Submit one structured service draft.')
-  const service = value.service
-  rejectUnknown(service, draftServiceFields, '$.service')
-  if (typeof service.id !== 'string' || !isValidServiceId(service.id)) fail('CONFIG_SERVICE_ID_INVALID', '$.service.id', 'The service identifier is invalid.', 'Use 1-64 lowercase letters, numbers, and single hyphen-separated segments.')
-  if (typeof service.shell !== 'boolean') fail('CONFIG_FIELD_TYPE_INVALID', '$.service.shell', 'Shell must be a boolean.', 'Use true or false.')
-  return { schemaVersion: 1, services: { [service.id]: {
-    program: validateProgram(service.program, '$.service.program'),
-    args: assertStringArray(service.args, '$.service.args'),
-    workingDirectory: validatePortablePath(service.workingDirectory, '$.service.workingDirectory', true),
-    shell: service.shell,
-    envFiles: normalizeEnvFiles(service.envFiles, '$.service.envFiles'),
-    env: normalizeEnvironmentRows(service.env, '$.service.env'),
-    ...(service.macos === undefined ? {} : { macos: normalizeDraftOverride(service.macos, '$.service.macos')! }),
-    ...(service.windows === undefined ? {} : { windows: normalizeDraftOverride(service.windows, '$.service.windows')! })
-  } } }
+  if (!Array.isArray(value.services) || value.services.length === 0) {
+    fail('CONFIG_SERVICES_REQUIRED', '$.services', 'At least one service is required.', 'Keep or add at least one service.')
+  }
+  const entries: Array<[string, DevelopmentServiceConfiguration]> = []
+  const seen = new Set<string>()
+  for (let index = 0; index < value.services.length; index += 1) {
+    if (!Object.hasOwn(value.services, index)) {
+      fail('CONFIG_FIELD_TYPE_INVALID', `$.services[${index}]`, 'The service draft has the wrong type.', 'Submit a structured service draft.')
+    }
+    const entry = normalizeDraftService(value.services[index], index)
+    if (seen.has(entry[0])) {
+      fail('CONFIG_SERVICE_ID_DUPLICATE', `$.services[${index}].id`, 'The service identifier is duplicated.', 'Use a unique identifier for every service.')
+    }
+    seen.add(entry[0])
+    entries.push(entry)
+  }
+  return { schemaVersion: 1, services: Object.fromEntries(entries) }
 }
 function platformDocument(override: PlatformOverride): Record<string, unknown> {
   return { ...(override.program === undefined ? {} : { program: override.program }), ...(override.args === undefined ? {} : { args: [...override.args] }), ...(override.env === undefined ? {} : { env: override.env }) }
 }
 function serviceDocument(service: DevelopmentServiceConfiguration): Record<string, unknown> {
-  return { program: service.program, args: [...service.args], working_directory: service.workingDirectory, shell: service.shell, env_files: [...service.envFiles], env: service.env, ...(service.macos === undefined ? {} : { macos: platformDocument(service.macos) }), ...(service.windows === undefined ? {} : { windows: platformDocument(service.windows) }) }
+  const { program, args, workingDirectory, shell, envFiles, env, macos, windows } = service
+  return { program, args: [...args], working_directory: workingDirectory, shell, env_files: [...envFiles], env, ...(macos === undefined ? {} : { macos: platformDocument(macos) }), ...(windows === undefined ? {} : { windows: platformDocument(windows) }) }
 }
 function serialize(configuration: ProjectConfigurationV1): string {
   const services = Object.fromEntries(Object.entries(configuration.services).sort(([left], [right]) => compareCodeUnits(left, right)).map(([id, service]) => [id, serviceDocument(service)]))

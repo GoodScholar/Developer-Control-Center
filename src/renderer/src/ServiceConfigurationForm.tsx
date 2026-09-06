@@ -4,15 +4,14 @@ import type {
   EnvironmentVariableDraft,
   PlatformName,
   PlatformOverrideDraft,
-  ProjectConfigurationDraft
+  DevelopmentServiceDraft
 } from '../../shared/contracts'
 
 interface ServiceConfigurationFormProps {
-  draft: ProjectConfigurationDraft
+  service: DevelopmentServiceDraft
+  serviceIndex: number
   error: ActionableError | undefined
-  onChange(draft: ProjectConfigurationDraft): void
-  onPreview(): void
-  onBack(): void
+  onChange(service: DevelopmentServiceDraft): void
 }
 
 function replaceAt<T>(values: readonly T[], index: number, value: T): T[] {
@@ -110,57 +109,57 @@ function EnvironmentRows(props: EnvironmentRowsProps) {
 
 function PlatformOverrideEditor(props: {
   platform: PlatformName
+  serviceIndex: number
   override: PlatformOverrideDraft | undefined
   error: ActionableError | undefined
   onChange(override: PlatformOverrideDraft | undefined): void
 }) {
   const title = props.platform === 'macos' ? 'macOS' : 'Windows'
-  const base = `$.service.${props.platform}`
-  const regionId = `${props.platform}-overrides`
+  const base = `$.services[${props.serviceIndex}].${props.platform}`
+  const idPrefix = `service-${props.serviceIndex}-${props.platform}`
+  const regionId = `${idPrefix}-overrides`
   return <section className="platform-overrides">
     <button type="button" aria-expanded={props.override !== undefined} aria-controls={regionId} onClick={() => props.onChange(props.override === undefined ? {} : undefined)}>{title} overrides</button>
     {props.override === undefined ? null : <div id={regionId} role="region" aria-label={`${title} overrides`}>
-      <label htmlFor={`${props.platform}-program`}>{title} Program</label>
-      <input id={`${props.platform}-program`} value={props.override.program ?? ''} aria-describedby={describedBy(props.error, `${base}.program`)} onChange={(event) => props.onChange({ ...props.override, program: event.target.value })} />
+      <label htmlFor={`${idPrefix}-program`}>{title} Program</label>
+      <input id={`${idPrefix}-program`} value={props.override.program ?? ''} aria-describedby={describedBy(props.error, `${base}.program`)} onChange={(event) => props.onChange({ ...props.override, program: event.target.value })} />
       <FieldIssue error={props.error} path={`${base}.program`} />
-      <StringRows title={`${title} Arguments`} itemName={`${title} Argument`} addLabel={`Add ${title} argument`} idPrefix={`${props.platform}-argument`} pathPrefix={`${base}.args`} values={props.override.args ?? []} error={props.error} onChange={(args) => props.onChange({ ...props.override, args })} />
-      <EnvironmentRows title={`${title} Environment values`} labelPrefix={`${title} `} idPrefix={`${props.platform}-environment`} pathPrefix={`${base}.env`} rows={props.override.env ?? []} error={props.error} onChange={(env) => props.onChange({ ...props.override, env })} />
+      <StringRows title={`${title} Arguments`} itemName={`${title} Argument`} addLabel={`Add ${title} argument`} idPrefix={`${idPrefix}-argument`} pathPrefix={`${base}.args`} values={props.override.args ?? []} error={props.error} onChange={(args) => props.onChange({ ...props.override, args })} />
+      <EnvironmentRows title={`${title} Environment values`} labelPrefix={`${title} `} idPrefix={`${idPrefix}-environment`} pathPrefix={`${base}.env`} rows={props.override.env ?? []} error={props.error} onChange={(env) => props.onChange({ ...props.override, env })} />
     </div>}
   </section>
 }
 
 export function ServiceConfigurationForm(props: ServiceConfigurationFormProps) {
-  const service = props.draft.service
-  const changeService = (patch: Partial<typeof service>) => props.onChange({ service: { ...service, ...patch } })
+  const { service } = props
+  const base = `$.services[${props.serviceIndex}]`
+  const idPrefix = `service-${props.serviceIndex}`
+  const changeService = (patch: Partial<DevelopmentServiceDraft>) => props.onChange({ ...service, ...patch })
   const changePlatform = (platform: PlatformName, override: PlatformOverrideDraft | undefined) => {
     const nextService = { ...service }
     if (override === undefined) delete nextService[platform]
     else nextService[platform] = override
-    props.onChange({ service: nextService })
+    props.onChange(nextService)
   }
 
-  return <form onSubmit={(event) => { event.preventDefault(); props.onPreview() }}>
-    <label htmlFor="service-id">Service ID</label>
-    <input id="service-id" value={service.id} aria-describedby={describedBy(props.error, '$.service.id')} onChange={(event) => changeService({ id: event.target.value.trim() })} />
-    <FieldIssue error={props.error} path="$.service.id" />
-    <label htmlFor="program">Program</label>
-    <input id="program" value={service.program} aria-describedby={describedBy(props.error, '$.service.program')} onChange={(event) => changeService({ program: event.target.value })} />
-    <FieldIssue error={props.error} path="$.service.program" />
-    <StringRows title="Arguments" itemName="Argument" addLabel="Add argument" idPrefix="argument" pathPrefix="$.service.args" values={service.args} error={props.error} onChange={(args) => changeService({ args })} />
-    <label htmlFor="working-directory">Working directory</label>
-    <input id="working-directory" value={service.workingDirectory} aria-describedby={describedBy(props.error, '$.service.workingDirectory')} onChange={(event) => changeService({ workingDirectory: event.target.value })} />
+  return <div className="service-configuration-fields">
+    <label htmlFor={`${idPrefix}-id`}>Service ID</label>
+    <input id={`${idPrefix}-id`} value={service.id} aria-describedby={describedBy(props.error, `${base}.id`)} onChange={(event) => changeService({ id: event.target.value.trim() })} />
+    <FieldIssue error={props.error} path={`${base}.id`} />
+    <label htmlFor={`${idPrefix}-program`}>Program</label>
+    <input id={`${idPrefix}-program`} value={service.program} aria-describedby={describedBy(props.error, `${base}.program`)} onChange={(event) => changeService({ program: event.target.value })} />
+    <FieldIssue error={props.error} path={`${base}.program`} />
+    <StringRows title="Arguments" itemName="Argument" addLabel="Add argument" idPrefix={`${idPrefix}-argument`} pathPrefix={`${base}.args`} values={service.args} error={props.error} onChange={(args) => changeService({ args })} />
+    <label htmlFor={`${idPrefix}-working-directory`}>Working directory</label>
+    <input id={`${idPrefix}-working-directory`} value={service.workingDirectory} aria-describedby={describedBy(props.error, `${base}.workingDirectory`)} onChange={(event) => changeService({ workingDirectory: event.target.value })} />
     <p>Use / separators and a path relative to the project root.</p>
-    <FieldIssue error={props.error} path="$.service.workingDirectory" />
-    <EnvironmentRows title="Environment values" labelPrefix="" idPrefix="environment" pathPrefix="$.service.env" rows={service.env} error={props.error} onChange={(env) => changeService({ env })} />
+    <FieldIssue error={props.error} path={`${base}.workingDirectory`} />
+    <EnvironmentRows title="Environment values" labelPrefix="" idPrefix={`${idPrefix}-environment`} pathPrefix={`${base}.env`} rows={service.env} error={props.error} onChange={(env) => changeService({ env })} />
     <p>Only enter non-sensitive values; put secrets in .env files.</p>
-    <StringRows title="Environment files" itemName="Environment file" addLabel="Add environment file" idPrefix="env-file" pathPrefix="$.service.envFiles" values={service.envFiles} error={props.error} onChange={(envFiles) => changeService({ envFiles })} />
+    <StringRows title="Environment files" itemName="Environment file" addLabel="Add environment file" idPrefix={`${idPrefix}-env-file`} pathPrefix={`${base}.envFiles`} values={service.envFiles} error={props.error} onChange={(envFiles) => changeService({ envFiles })} />
     <label className="checkbox-field"><input type="checkbox" checked={service.shell} onChange={(event) => changeService({ shell: event.target.checked })} />Run through shell</label>
     <p>Shell execution changes quoting and expansion behavior. Enable it only when required.</p>
-    <PlatformOverrideEditor platform="macos" override={service.macos} error={props.error} onChange={(override) => changePlatform('macos', override)} />
-    <PlatformOverrideEditor platform="windows" override={service.windows} error={props.error} onChange={(override) => changePlatform('windows', override)} />
-    <div className="configuration-actions">
-      <button type="button" onClick={props.onBack}>Back to projects</button>
-      <button type="submit" className="primary-action">Preview configuration</button>
-    </div>
-  </form>
+    <PlatformOverrideEditor platform="macos" serviceIndex={props.serviceIndex} override={service.macos} error={props.error} onChange={(override) => changePlatform('macos', override)} />
+    <PlatformOverrideEditor platform="windows" serviceIndex={props.serviceIndex} override={service.windows} error={props.error} onChange={(override) => changePlatform('windows', override)} />
+  </div>
 }

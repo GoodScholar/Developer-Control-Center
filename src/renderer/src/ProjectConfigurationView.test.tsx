@@ -35,11 +35,11 @@ test('previews the structured draft, invalidates it after editing, then creates 
   await user.type(screen.getByLabelText('Argument 1'), 'dev')
   await user.click(screen.getByRole('button', { name: 'Preview configuration' }))
 
-  expect(preview).toHaveBeenCalledWith('project-1', expect.objectContaining({
-    service: expect.objectContaining({
+  expect(preview).toHaveBeenCalledWith('project-1', {
+    services: [expect.objectContaining({
       id: 'web', program: 'pnpm', args: ['dev'], workingDirectory: '.', shell: false, envFiles: [], env: []
-    })
-  }))
+    })]
+  })
   expect(screen.getByText(/schema_version = 1/)).toBeVisible()
 
   await user.click(screen.getByRole('button', { name: 'Back to editing' }))
@@ -86,9 +86,9 @@ test('submits shell only after selection and omits disabled platform overrides',
   await user.click(screen.getByRole('button', { name: 'Preview configuration' }))
 
   expect(preview).toHaveBeenCalledWith('project-1', expect.objectContaining({
-    service: expect.objectContaining({ shell: true, macos: { program: 'node' } })
+    services: [expect.objectContaining({ shell: true, macos: { program: 'node' } })]
   }))
-  expect(preview.mock.calls[0]![1].service.windows).toBeUndefined()
+  expect(preview.mock.calls[0]![1].services[0]!.windows).toBeUndefined()
 })
 
 test('submits Windows program, argument and environment overrides only', async () => {
@@ -106,7 +106,7 @@ test('submits Windows program, argument and environment overrides only', async (
   await user.type(screen.getByLabelText('Windows Environment value 1'), 'poll')
   await user.click(screen.getByRole('button', { name: 'Preview configuration' }))
 
-  expect(preview.mock.calls[0]![1].service.windows).toEqual({
+  expect(preview.mock.calls[0]![1].services[0]!.windows).toEqual({
     program: 'pnpm.cmd',
     args: ['dev'],
     env: [{ key: 'WATCH_MODE', value: 'poll' }]
@@ -130,7 +130,7 @@ test.each([
   expect(screen.queryByRole('button', { name: 'Create configuration' })).not.toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Preview configuration' }))
 
-  expect(preview.mock.calls[0]![1].service[field]).toEqual([])
+  expect(preview.mock.calls[0]![1].services[0]![field]).toEqual([])
 })
 
 test('adds and removes an environment row without retaining its value', async () => {
@@ -146,7 +146,7 @@ test('adds and removes an environment row without retaining its value', async ()
   expect(screen.queryByRole('button', { name: 'Create configuration' })).not.toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Preview configuration' }))
 
-  expect(preview.mock.calls[0]![1].service.env).toEqual([])
+  expect(preview.mock.calls[0]![1].services[0]!.env).toEqual([])
 })
 
 test('prevents duplicate create calls while the first request is pending', async () => {
@@ -174,7 +174,7 @@ test('focuses a mapped field error without rendering the environment value', asy
     error: {
       code: 'CONFIG_ENVIRONMENT_KEY_DUPLICATE',
       resource: { kind: 'project_configuration', projectId: 'project-1' },
-      fieldPath: '$.service.env[1].key',
+      fieldPath: '$.services[0].env[1].key',
       message: 'The environment variable name is duplicated.',
       nextAction: 'Keep one row for this environment variable.'
     }
@@ -199,7 +199,7 @@ test('renders one page alert and a described field error, then focuses its contr
     error: {
       code: 'CONFIG_PROGRAM_REQUIRED',
       resource: { kind: 'project_configuration', projectId: 'project-1' },
-      fieldPath: '$.service.program',
+      fieldPath: '$.services[0].program',
       message: 'A program is required.',
       nextAction: 'Enter the program to run.'
     }
@@ -216,19 +216,19 @@ test('renders one page alert and a described field error, then focuses its contr
   expect(pageAlert).toHaveClass('action-error')
   expect(pageAlert).toHaveTextContent('A program is required.')
   expect(pageAlert).toHaveTextContent('Enter the program to run.')
-  const fieldIssue = document.getElementById('issue-$.service.program')
+  const fieldIssue = document.getElementById('issue-$.services[0].program')
   expect(fieldIssue).toBeVisible()
   expect(fieldIssue).toHaveClass('field-error')
   expect(fieldIssue).not.toHaveAttribute('role')
   expect(fieldIssue).toHaveTextContent('A program is required.')
   expect(fieldIssue).toHaveTextContent('Enter the program to run.')
-  expect(program).toHaveAttribute('aria-describedby', 'issue-$.service.program')
+  expect(program).toHaveAttribute('aria-describedby', 'issue-$.services[0].program')
   expect(document.activeElement).toBe(program)
 })
 
 test.each([
-  '$.service.args[2]',
-  '$.service.macos.program'
+  '$.services[0].args[2]',
+  '$.services[0].macos.program'
 ])('falls back to a focused page alert when %s has no rendered control', async (fieldPath) => {
   preview.mockResolvedValue({
     ok: false,
@@ -253,7 +253,7 @@ test.each([
 })
 
 test.each([
-  ['CONFIG_UNKNOWN_FIELD', '$.service.unknown', 'project_configuration'],
+  ['CONFIG_UNKNOWN_FIELD', '$.services[0].unknown', 'project_configuration'],
   ['PROJECT_NOT_FOUND', undefined, 'project'],
   ['PROJECT_DIRECTORY_UNAVAILABLE', undefined, 'project'],
   ['PROJECT_CONFIGURATION_ALREADY_EXISTS', undefined, 'project_configuration']

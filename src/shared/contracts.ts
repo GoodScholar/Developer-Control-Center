@@ -34,7 +34,7 @@ export interface DevelopmentServiceDraft {
 }
 
 export interface ProjectConfigurationDraft {
-  service: DevelopmentServiceDraft
+  services: DevelopmentServiceDraft[]
 }
 
 export interface PlatformOverride {

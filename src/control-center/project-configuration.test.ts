@@ -6,7 +6,7 @@ import {
 } from './project-configuration'
 
 const minimalDraft: ProjectConfigurationDraft = {
-  service: {
+  services: [{
     id: 'web',
     program: '  pnpm  ',
     args: [],
@@ -14,7 +14,7 @@ const minimalDraft: ProjectConfigurationDraft = {
     shell: false,
     envFiles: [],
     env: []
-  }
+  }]
 }
 
 test('builds a deterministic schema v1 preview with explicit safe defaults', () => {
@@ -32,9 +32,47 @@ test('builds a deterministic schema v1 preview with explicit safe defaults', () 
   expect(first.source.endsWith('\n\n')).toBe(false)
 })
 
+test('builds multiple services and serializes them by service id', () => {
+  const draft: ProjectConfigurationDraft = {
+    services: [
+      { id: 'worker', program: 'node', args: ['worker.js'], workingDirectory: '.', shell: false, envFiles: [], env: [] },
+      { id: 'api', program: 'npm', args: ['run', 'dev'], workingDirectory: 'apps/api', shell: false, envFiles: [], env: [] }
+    ]
+  }
+  const preview = buildProjectConfigurationPreview(draft)
+  expect(preview.source.indexOf('[services.api]')).toBeLessThan(preview.source.indexOf('[services.worker]'))
+  expect(parseProjectConfiguration(preview.source).services).toEqual({
+    api: { program: 'npm', args: ['run', 'dev'], workingDirectory: 'apps/api', shell: false, envFiles: [], env: {} },
+    worker: { program: 'node', args: ['worker.js'], workingDirectory: '.', shell: false, envFiles: [], env: {} }
+  })
+})
+
+test('requires at least one service in a draft', () => {
+  expect(() => buildProjectConfigurationPreview({ services: [] })).toThrowError(
+    expect.objectContaining({ detail: expect.objectContaining({
+      code: 'CONFIG_SERVICES_REQUIRED', fieldPath: '$.services'
+    }) })
+  )
+})
+
+test('reports a duplicate id on the later service', () => {
+  const duplicate = structuredClone(minimalDraft)
+  duplicate.services.push({ ...structuredClone(duplicate.services[0]!), program: 'npm' })
+  expect(() => buildProjectConfigurationPreview(duplicate)).toThrowError(
+    expect.objectContaining({ detail: expect.objectContaining({
+      code: 'CONFIG_SERVICE_ID_DUPLICATE', fieldPath: '$.services[1].id'
+    }) })
+  )
+})
+
+test('keeps manual configuration as a one-service draft', () => {
+  const preview = buildProjectConfigurationPreview(minimalDraft)
+  expect(parseProjectConfiguration(preview.source).services.web).toMatchObject({ program: 'pnpm' })
+})
+
 test('orders shared fields, environment keys and platform overrides deterministically', () => {
   const draft: ProjectConfigurationDraft = {
-    service: {
+    services: [{
       id: 'web',
       program: 'pnpm',
       args: ['dev', '--host', '127.0.0.1'],
@@ -56,7 +94,7 @@ test('orders shared fields, environment keys and platform overrides deterministi
         args: ['dev', '--watch'],
         env: [{ key: 'WATCH_MODE', value: 'poll' }]
       }
-    }
+    }]
   }
   const { source } = buildProjectConfigurationPreview(draft)
   expect(source.indexOf('schema_version')).toBeLessThan(source.indexOf('[services.web]'))
@@ -113,11 +151,12 @@ PORT = "4000"
     }
   })
   const service = configuration.services.web!
+  const { env: sharedEnvironment, windows } = service
   expect({
     ...service,
-    program: service.windows?.program ?? service.program,
-    args: service.windows?.args ?? service.args,
-    env: { ...service.env, ...service.windows?.env }
+    program: windows?.program ?? service.program,
+    args: windows?.args ?? service.args,
+    env: { ...sharedEnvironment, ...(windows?.env ?? {}) }
   }).toMatchObject({
     program: 'pnpm.cmd',
     args: [],
@@ -159,12 +198,12 @@ test.each([
   ['leading CR', '\rpnpm'],
   ['trailing CR', 'pnpm\r']
 ])('rejects program control characters before draft normalization: %s', (_name, program) => {
-  const draft = structuredClone(minimalDraft)
-  draft.service.program = program
-  expect(() => buildProjectConfigurationPreview(draft)).toThrowError(expect.objectContaining({
+  const candidate = structuredClone(minimalDraft)
+  candidate.services[0]!.program = program
+  expect(() => buildProjectConfigurationPreview(candidate)).toThrowError(expect.objectContaining({
     detail: expect.objectContaining({
       code: 'CONFIG_STRING_CONTAINS_CONTROL_CHARACTER',
-      fieldPath: '$.service.program'
+      fieldPath: '$.services[0].program'
     })
   }))
 })
@@ -242,55 +281,59 @@ test.each([
   'apps/web/',
   ''
 ])('rejects a non-portable env file path: %s', (value) => {
-  const draft = structuredClone(minimalDraft)
-  draft.service.envFiles = [value]
-  expect(() => buildProjectConfigurationPreview(draft)).toThrowError(
+  const candidate = structuredClone(minimalDraft)
+  candidate.services[0]!.envFiles = [value]
+  expect(() => buildProjectConfigurationPreview(candidate)).toThrowError(
     expect.objectContaining({ detail: expect.objectContaining({ code: expect.stringMatching(/^CONFIG_PATH_/) }) })
   )
 })
 
 test('never includes an environment value in configuration failures', () => {
   const secretValue = 'mutation-secret-value-7391'
-  const draft = structuredClone(minimalDraft)
-  draft.service.env = [
+  const candidate = structuredClone(minimalDraft)
+  candidate.services[0]!.env = [
     { key: 'SAFE_KEY', value: secretValue },
     { key: 'SAFE_KEY', value: secretValue }
   ]
   let thrown: unknown
   try {
-    buildProjectConfigurationPreview(draft)
+    buildProjectConfigurationPreview(candidate)
   } catch (error) {
     thrown = error
   }
   expect(thrown).toMatchObject({
     detail: {
       code: 'CONFIG_ENVIRONMENT_KEY_DUPLICATE',
-      fieldPath: '$.service.env[1].key'
+      fieldPath: '$.services[0].env[1].key'
     }
   })
   expect(JSON.stringify(thrown)).not.toContain(secretValue)
 })
 
 test.each([
-  ['unknown service field', { ...minimalDraft, service: { ...minimalDraft.service, surprise: true } }, 'CONFIG_UNKNOWN_FIELD', '$.service.surprise'],
-  ['non-array args', { ...minimalDraft, service: { ...minimalDraft.service, args: 'dev' } }, 'CONFIG_FIELD_TYPE_INVALID', '$.service.args'],
-  ['NUL program', { ...minimalDraft, service: { ...minimalDraft.service, program: 'pnpm\0' } }, 'CONFIG_STRING_CONTAINS_CONTROL_CHARACTER', '$.service.program'],
-  ['NUL argument', { ...minimalDraft, service: { ...minimalDraft.service, args: ['dev\0'] } }, 'CONFIG_STRING_CONTAINS_CONTROL_CHARACTER', '$.service.args[0]'],
-  ['NUL environment value', { ...minimalDraft, service: { ...minimalDraft.service, env: [{ key: 'SAFE', value: 'value\0' }] } }, 'CONFIG_STRING_CONTAINS_CONTROL_CHARACTER', '$.service.env[0].value'],
-  ['invalid environment key', { ...minimalDraft, service: { ...minimalDraft.service, env: [{ key: 'NOT-PORTABLE', value: 'value' }] } }, 'CONFIG_ENVIRONMENT_KEY_INVALID', '$.service.env[0].key'],
-  ['empty platform override', { ...minimalDraft, service: { ...minimalDraft.service, macos: {} } }, 'CONFIG_PLATFORM_OVERRIDE_EMPTY', '$.service.macos']
+  ['unknown service field', { services: [{ ...minimalDraft.services[0]!, surprise: true }] }, 'CONFIG_UNKNOWN_FIELD', '$.services[0].surprise'],
+  ['non-array args', { services: [{ ...minimalDraft.services[0]!, args: 'dev' }] }, 'CONFIG_FIELD_TYPE_INVALID', '$.services[0].args'],
+  ['NUL program', { services: [{ ...minimalDraft.services[0]!, program: 'pnpm\0' }] }, 'CONFIG_STRING_CONTAINS_CONTROL_CHARACTER', '$.services[0].program'],
+  ['NUL argument', { services: [{ ...minimalDraft.services[0]!, args: ['dev\0'] }] }, 'CONFIG_STRING_CONTAINS_CONTROL_CHARACTER', '$.services[0].args[0]'],
+  ['NUL environment value', { services: [{ ...minimalDraft.services[0]!, env: [{ key: 'SAFE', value: 'value\0' }] }] }, 'CONFIG_STRING_CONTAINS_CONTROL_CHARACTER', '$.services[0].env[0].value'],
+  ['invalid environment key', { services: [{ ...minimalDraft.services[0]!, env: [{ key: 'NOT-PORTABLE', value: 'value' }] }] }, 'CONFIG_ENVIRONMENT_KEY_INVALID', '$.services[0].env[0].key'],
+  ['empty platform override', { services: [{ ...minimalDraft.services[0]!, macos: {} }] }, 'CONFIG_PLATFORM_OVERRIDE_EMPTY', '$.services[0].macos']
 ] as const)('rejects malicious draft shape: %s', (_name, value, code, fieldPath) => {
   expect(() => buildProjectConfigurationPreview(value as unknown as ProjectConfigurationDraft))
     .toThrowError(expect.objectContaining({ detail: expect.objectContaining({ code, fieldPath }) }))
 })
 
 test.each([
-  ['args', (draft: ProjectConfigurationDraft) => { draft.service.args = new Array(1) }, '$.service.args[0]'],
-  ['environment rows', (draft: ProjectConfigurationDraft) => { draft.service.env = new Array(1) }, '$.service.env[0]']
+  ['args', (candidate: ProjectConfigurationDraft) => {
+    candidate.services[0]!.args = new Array(1)
+  }, '$.services[0].args[0]'],
+  ['environment rows', (candidate: ProjectConfigurationDraft) => {
+    candidate.services[0]!.env = new Array(1)
+  }, '$.services[0].env[0]']
 ])('rejects sparse %s from an IPC draft', (_name, mutate, fieldPath) => {
-  const draft = structuredClone(minimalDraft)
-  mutate(draft)
-  expect(() => buildProjectConfigurationPreview(draft)).toThrowError(
+  const candidate = structuredClone(minimalDraft)
+  mutate(candidate)
+  expect(() => buildProjectConfigurationPreview(candidate)).toThrowError(
     expect.objectContaining({
       detail: expect.objectContaining({
         code: 'CONFIG_FIELD_TYPE_INVALID',
@@ -300,17 +343,27 @@ test.each([
   )
 })
 
+test.each([
+  [{ services: new Array(1) }, '$.services[0]'],
+  [{ services: [null] }, '$.services[0]']
+])('rejects an invalid service array entry', (draft, fieldPath) => {
+  expect(() => buildProjectConfigurationPreview(draft as unknown as ProjectConfigurationDraft))
+    .toThrowError(expect.objectContaining({ detail: expect.objectContaining({
+      code: 'CONFIG_FIELD_TYPE_INVALID', fieldPath
+    }) }))
+})
+
 test.each(['pnpm.cmd', 'scripts/dev-server'])('accepts a portable program form: %s', (program) => {
-  const draft = structuredClone(minimalDraft)
-  draft.service.program = program
-  draft.service.args = ['https://example.com', '/tool-specific/value']
-  expect(() => buildProjectConfigurationPreview(draft)).not.toThrow()
+  const candidate = structuredClone(minimalDraft)
+  candidate.services[0]!.program = program
+  candidate.services[0]!.args = ['https://example.com', '/tool-specific/value']
+  expect(() => buildProjectConfigurationPreview(candidate)).not.toThrow()
 })
 
 test('round-trips __proto__ as an own environment key', () => {
-  const draft = structuredClone(minimalDraft)
-  draft.service.env = [{ key: '__proto__', value: 'safe-value' }]
-  const parsed = parseProjectConfiguration(buildProjectConfigurationPreview(draft).source)
+  const candidate = structuredClone(minimalDraft)
+  candidate.services[0]!.env = [{ key: '__proto__', value: 'safe-value' }]
+  const parsed = parseProjectConfiguration(buildProjectConfigurationPreview(candidate).source)
   expect(Object.hasOwn(parsed.services.web!.env, '__proto__')).toBe(true)
   expect(parsed.services.web!.env.__proto__).toBe('safe-value')
 })
@@ -333,8 +386,8 @@ test('round-trips a generated preview through the public parser', () => {
 })
 
 test('round-trips every shared and platform field from a complete draft', () => {
-  const draft = structuredClone(minimalDraft)
-  Object.assign(draft.service, {
+  const candidate = structuredClone(minimalDraft)
+  Object.assign(candidate.services[0]!, {
     args: ['dev', '--host', '127.0.0.1'],
     workingDirectory: 'apps/web',
     shell: true,
@@ -347,7 +400,7 @@ test('round-trips every shared and platform field from a complete draft', () => 
       env: [{ key: 'PORT', value: '4000' }, { key: 'WATCH_MODE', value: 'poll' }]
     }
   })
-  expect(parseProjectConfiguration(buildProjectConfigurationPreview(draft).source)).toEqual({
+  expect(parseProjectConfiguration(buildProjectConfigurationPreview(candidate).source)).toEqual({
     schemaVersion: 1,
     services: {
       web: {
