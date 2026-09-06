@@ -71,6 +71,24 @@ export function packageJsonDetectionError(
   })
 }
 
+export function packageJsonReadFailed(): ControlCenterError {
+  return packageJsonDetectionError(
+    'PACKAGE_JSON_READ_FAILED',
+    undefined,
+    'The package manifest could not be read safely.',
+    'Check the root package.json file or configure the project manually.'
+  )
+}
+
+export function packageJsonOutsideProject(): ControlCenterError {
+  return packageJsonDetectionError(
+    'PACKAGE_JSON_OUTSIDE_PROJECT',
+    undefined,
+    'The package manifest resolves outside the development project.',
+    'Replace the link with a package.json file inside the project or configure the project manually.'
+  )
+}
+
 export function projectConfigurationAlreadyExists(projectId?: string): ControlCenterError {
   return configurationError(
     'PROJECT_CONFIGURATION_ALREADY_EXISTS',

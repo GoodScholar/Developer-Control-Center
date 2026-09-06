@@ -1,5 +1,6 @@
 import {
   link,
+  lstat,
   mkdtemp,
   mkdir,
   open,
@@ -7,6 +8,9 @@ import {
   readdir,
   realpath,
   rm,
+  stat,
+  symlink,
+  unlink,
   writeFile
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -19,6 +23,11 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   return {
     ...actual,
     realpath: vi.fn(actual.realpath),
+    lstat: vi.fn(actual.lstat),
+    stat: vi.fn(actual.stat),
+    readFile: vi.fn(actual.readFile),
+    symlink: vi.fn(actual.symlink),
+    unlink: vi.fn(actual.unlink),
     open: vi.fn(actual.open),
     link: vi.fn(actual.link),
     rm: vi.fn(actual.rm)
@@ -29,7 +38,7 @@ let temporaryRoot: string
 
 beforeEach(async () => {
   vi.clearAllMocks()
-  temporaryRoot = await mkdtemp(join(tmpdir(), 'developer-control-center-'))
+  temporaryRoot = await realpath(await mkdtemp(join(tmpdir(), 'developer-control-center-')))
 })
 
 afterEach(async () => {
@@ -78,6 +87,115 @@ test('preserves an unexpected filesystem error', async () => {
   await expect(
     new NodeHostRuntime().inspectProjectDirectory(join(temporaryRoot, 'sample-project'))
   ).rejects.toBe(sentinel)
+})
+
+test('returns configuration-exists without reading package.json', async () => {
+  const rootPath = join(temporaryRoot, 'configured-project')
+  await mkdir(rootPath)
+  await writeFile(join(rootPath, '.devcontrol.toml'), 'existing', 'utf8')
+  await writeFile(join(rootPath, 'package.json'), '{"scripts":{"dev":"opaque"}}', 'utf8')
+  vi.mocked(readFile).mockClear()
+
+  await expect(new NodeHostRuntime().inspectPackageJsonDetection(rootPath))
+    .resolves.toEqual({ kind: 'configuration-exists' })
+  expect(readFile).not.toHaveBeenCalled()
+})
+
+test('returns package-json-missing for an absent fixed manifest', async () => {
+  const rootPath = join(temporaryRoot, 'empty-project')
+  await mkdir(rootPath)
+
+  await expect(new NodeHostRuntime().inspectPackageJsonDetection(rootPath))
+    .resolves.toEqual({ kind: 'package-json-missing' })
+})
+
+test('reads only the root package.json as UTF-8', async () => {
+  const rootPath = join(temporaryRoot, 'node-project')
+  const source = '{"scripts":{"dev":"opaque"}}'
+  await mkdir(join(rootPath, 'packages', 'nested'), { recursive: true })
+  await writeFile(join(rootPath, 'package.json'), source, 'utf8')
+  await writeFile(join(rootPath, 'packages', 'nested', 'package.json'), 'nested-marker', 'utf8')
+
+  await expect(new NodeHostRuntime().inspectPackageJsonDetection(rootPath))
+    .resolves.toEqual({ kind: 'package-json', source })
+  expect(vi.mocked(readFile)).toHaveBeenCalledOnce()
+  expect(vi.mocked(readFile).mock.calls[0]![0]).toBe(join(rootPath, 'package.json'))
+})
+
+test.skipIf(process.platform === 'win32')('rejects a package.json symlink outside the canonical root', async () => {
+  const rootPath = join(temporaryRoot, 'project')
+  const outsidePath = join(temporaryRoot, 'outside-package.json')
+  await mkdir(rootPath)
+  await writeFile(outsidePath, '{"scripts":{"dev":"outside-body"}}', 'utf8')
+  await symlink(outsidePath, join(rootPath, 'package.json'))
+
+  const error = await new NodeHostRuntime().inspectPackageJsonDetection(rootPath).then(
+    () => { throw new Error('Expected containment rejection.') },
+    (value: unknown) => value
+  )
+
+  expect(error).toMatchObject({ detail: { code: 'PACKAGE_JSON_OUTSIDE_PROJECT' } })
+  expect(JSON.stringify(error)).not.toContain(outsidePath)
+  expect(JSON.stringify(error)).not.toContain('outside-body')
+})
+
+test.skipIf(process.platform === 'win32')('reads an internal package.json symlink through its contained resolved target', async () => {
+  const rootPath = join(temporaryRoot, 'project')
+  const internalTarget = join(rootPath, 'manifests', 'package-source.json')
+  const packagePath = join(rootPath, 'package.json')
+  const source = '{"scripts":{"dev":"internal-body"}}'
+  await mkdir(join(rootPath, 'manifests'), { recursive: true })
+  await writeFile(internalTarget, source, 'utf8')
+  await symlink(internalTarget, packagePath)
+
+  await expect(new NodeHostRuntime().inspectPackageJsonDetection(rootPath))
+    .resolves.toEqual({ kind: 'package-json', source })
+  expect(readFile).toHaveBeenCalledWith(await realpath(internalTarget), 'utf8')
+})
+
+test.skipIf(process.platform === 'win32')('does not follow a packagePath swap after realpath containment', async () => {
+  const rootPath = join(temporaryRoot, 'project')
+  const packagePath = join(rootPath, 'package.json')
+  const internalTarget = join(rootPath, 'internal-package.json')
+  const outsideTarget = join(temporaryRoot, 'outside-package.json')
+  await mkdir(rootPath)
+  await writeFile(internalTarget, '{"scripts":{"dev":"internal-body"}}', 'utf8')
+  await writeFile(outsideTarget, '{"scripts":{"dev":"outside-body"}}', 'utf8')
+  await symlink(internalTarget, packagePath)
+  const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+  vi.mocked(stat).mockImplementationOnce(async (target) => {
+    const details = await actual.stat(target)
+    await unlink(packagePath)
+    await symlink(outsideTarget, packagePath)
+    return details
+  })
+
+  await expect(new NodeHostRuntime().inspectPackageJsonDetection(rootPath)).resolves.toEqual({
+    kind: 'package-json', source: '{"scripts":{"dev":"internal-body"}}'
+  })
+  expect(readFile).toHaveBeenCalledWith(await realpath(internalTarget), 'utf8')
+})
+
+test('rejects a directory at package.json without reading it', async () => {
+  const rootPath = join(temporaryRoot, 'project')
+  await mkdir(join(rootPath, 'package.json'), { recursive: true })
+
+  await expect(new NodeHostRuntime().inspectPackageJsonDetection(rootPath)).rejects.toMatchObject({
+    detail: { code: 'PACKAGE_JSON_READ_FAILED', resource: { kind: 'project' } }
+  })
+  expect(readFile).not.toHaveBeenCalled()
+})
+
+test.each(['EACCES', 'EPERM'])('maps package manifest access error %s without raw details', async (code) => {
+  vi.mocked(readFile).mockRejectedValueOnce(Object.assign(new Error('/outside/raw-path'), { code }))
+  const rootPath = join(temporaryRoot, 'project')
+  await mkdir(rootPath)
+  await writeFile(join(rootPath, 'package.json'), '{}', 'utf8')
+
+  const error = await new NodeHostRuntime().inspectPackageJsonDetection(rootPath).catch((value) => value)
+
+  expect(error).toMatchObject({ detail: { code: 'PACKAGE_JSON_READ_FAILED' } })
+  expect(JSON.stringify(error)).not.toContain('/outside/raw-path')
 })
 
 test('creates the complete project configuration as UTF-8', async () => {

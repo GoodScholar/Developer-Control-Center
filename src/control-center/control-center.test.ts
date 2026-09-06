@@ -134,6 +134,9 @@ test('preserves an unexpected host runtime error when listing projects', async (
     async inspectProjectDirectory() {
       throw sentinel
     },
+    async inspectPackageJsonDetection() {
+      return { kind: 'package-json-missing' }
+    },
     async createProjectConfiguration() {}
   }
   const reopened = createTestControlCenter(databasePath, hostRuntime)
@@ -287,6 +290,9 @@ test('binds a directory error to the registered project id', async () => {
     async inspectProjectDirectory() {
       throw projectDirectoryUnavailable('/stored/project')
     },
+    async inspectPackageJsonDetection() {
+      return { kind: 'package-json-missing' }
+    },
     async createProjectConfiguration() {}
   })
 
@@ -324,6 +330,9 @@ test('binds a creation error to the registered project id', async () => {
     async inspectProjectDirectory() {
       return { canonicalPath: '/canonical/project', name: 'sample-project' }
     },
+    async inspectPackageJsonDetection() {
+      return { kind: 'package-json-missing' }
+    },
     async createProjectConfiguration() {
       throw projectConfigurationAlreadyExists()
     }
@@ -343,6 +352,9 @@ test('preserves an invalid project id returned by the host runtime', async () =>
     async inspectProjectDirectory() {
       throw expected
     },
+    async inspectPackageJsonDetection() {
+      return { kind: 'package-json-missing' }
+    },
     async createProjectConfiguration() {}
   })
 
@@ -354,6 +366,9 @@ test('preserves a project-not-found error returned by the host runtime', async (
   const center = trustedProjectControlCenter({
     async inspectProjectDirectory() {
       throw expected
+    },
+    async inspectPackageJsonDetection() {
+      return { kind: 'package-json-missing' }
     },
     async createProjectConfiguration() {}
   })
