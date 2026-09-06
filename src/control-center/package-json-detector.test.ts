@@ -46,6 +46,29 @@ test('normalizes ids, truncates to 64 and resolves collisions in candidate order
   expect(candidates.every((candidate) => candidate.candidateId.startsWith('package-json:'))).toBe(true)
 })
 
+test('keeps colliding long normalized ids unique within 64 characters', () => {
+  const prefix = `dev:${'x'.repeat(80)}`
+  const candidates = detectPackageJsonCandidates(JSON.stringify({ scripts: {
+    [`${prefix}:alpha`]: 'first-body', [`${prefix}:beta`]: 'second-body'
+  } }))
+  expect(candidates.map((candidate) => candidate.draft.id)).toEqual([
+    `dev-${'x'.repeat(60)}`, `dev-${'x'.repeat(58)}-2`
+  ])
+  expect(candidates.map((candidate) => candidate.draft.id).every((id) => id.length <= 64)).toBe(true)
+})
+
+test('derives stable candidate ids independently of JSON key order and script bodies', () => {
+  const first = detectPackageJsonCandidates(JSON.stringify({ scripts: {
+    serve: 'first-serve-body', dev: 'first-dev-body', 'dev:web': 'first-web-body'
+  } }))
+  const second = detectPackageJsonCandidates(JSON.stringify({ scripts: {
+    'dev:web': 'second-web-body', dev: 'second-dev-body', serve: 'second-serve-body'
+  } }))
+  const expected = ['package-json:0:dev', 'package-json:1:dev:web', 'package-json:2:serve']
+  expect(first.map((candidate) => candidate.candidateId)).toEqual(expected)
+  expect(second.map((candidate) => candidate.candidateId)).toEqual(expected)
+})
+
 test.each([
   ['{"scripts":', 'PACKAGE_JSON_INVALID', '$'],
   ['[]', 'PACKAGE_JSON_ROOT_INVALID', '$'],
@@ -57,6 +80,20 @@ test.each([
   try { detectPackageJsonCandidates(source) } catch (error) { thrown = error }
   expect(thrown).toMatchObject({ detail: { code, fieldPath, resource: { kind: 'project' } } })
   expect(JSON.stringify(thrown)).not.toContain(source)
+})
+
+test('never leaks selected script bodies or invalid values in script validation errors', () => {
+  const selectedBody = 'selected-script-body-sentinel'
+  const invalidValue = 'invalid-script-value-sentinel'
+  const source = JSON.stringify({ scripts: {
+    dev: selectedBody, 'dev:web': { marker: invalidValue }
+  } })
+  let thrown: unknown
+  try { detectPackageJsonCandidates(source) } catch (error) { thrown = error }
+  const serialized = JSON.stringify(thrown)
+  expect(serialized).not.toContain(source)
+  expect(serialized).not.toContain(selectedBody)
+  expect(serialized).not.toContain(invalidValue)
 })
 
 test('never returns or leaks a selected script body', () => {
