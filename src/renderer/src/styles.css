@@ -354,6 +354,30 @@ legend {
   margin-top: 1rem;
 }
 
+.proposal-list {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.proposal-candidate {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid light-dark(#dfe2e7, #343841);
+  border-radius: 0.625rem;
+}
+
+.proposal-candidate > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.proposal-candidate header p {
+  overflow-wrap: anywhere;
+}
+
 pre {
   max-width: 100%;
   overflow: auto;
@@ -407,6 +431,10 @@ pre {
     grid-column: 1;
     grid-row: auto;
     justify-self: start;
+  }
+
+  .proposal-candidate > header {
+    flex-direction: column;
   }
 }
 
