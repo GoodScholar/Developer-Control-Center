@@ -21,6 +21,17 @@ body {
   padding: clamp(2rem, 5vw, 4rem);
 }
 
+.detection-status {
+  display: grid;
+  justify-items: start;
+  gap: 1rem;
+}
+
+.detection-status .action-error {
+  width: min(100%, 42rem);
+  margin-top: 0;
+}
+
 .app-header,
 .section-heading,
 .project-row,

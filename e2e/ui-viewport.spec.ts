@@ -1,6 +1,7 @@
 import { _electron as electron, expect, test, type Locator, type Page } from '@playwright/test'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
+import { createNodeProject, launchSelectedProject } from './package-json-project-fixture'
 
 async function tabTo(page: Page, target: Locator): Promise<void> {
   for (let index = 0; index < 80; index += 1) {
@@ -100,6 +101,52 @@ for (const size of [{ width: 1100, height: 720 }, { width: 760, height: 520 }]) 
       await page.screenshot({
         path: testInfo.outputPath(`project-configuration-${size.width}x${size.height}.png`)
       })
+      await page.keyboard.press('Enter')
+      await expect(page.getByText('.devcontrol.toml created')).toBeVisible()
+    } finally {
+      await app.close().catch(() => undefined)
+    }
+  })
+
+  test(`keeps package proposal keyboard-usable at ${size.width}x${size.height}`, async ({}, testInfo) => {
+    const { projectRoot } = await createNodeProject(testInfo, `viewport-${size.width}`)
+    const app = await launchSelectedProject(testInfo.outputPath(`package-user-data-${size.width}`), projectRoot)
+    try {
+      const page = await app.firstWindow()
+      await app.evaluate(({ BrowserWindow }, viewport) => {
+        BrowserWindow.getAllWindows()[0]!.setContentSize(viewport.width, viewport.height)
+      }, size)
+      const add = page.getByRole('button', { name: 'Add project' })
+      await tabTo(page, add)
+      await page.keyboard.press('Enter')
+      const serviceId = page.getByTestId('candidate-package-json:0:dev').getByLabel('Service ID')
+      await tabTo(page, serviceId)
+      await page.keyboard.press('ControlOrMeta+A')
+      await page.keyboard.type('frontend')
+      const remove = page.getByRole('button', { name: 'Remove suggested service dev:api' })
+      await tabTo(page, remove)
+      await page.keyboard.press('Enter')
+      const previewButton = page.getByRole('button', { name: 'Preview configuration' })
+      await tabTo(page, previewButton)
+      await page.keyboard.press('Enter')
+      const previewPanel = page.getByLabel('Project configuration preview')
+      await expect(previewPanel).toContainText('[services.frontend]')
+      await expect.poll(() => page.evaluate(() => ({
+        document: document.documentElement.scrollWidth <= window.innerWidth,
+        body: document.body.scrollWidth <= window.innerWidth
+      }))).toEqual({ document: true, body: true })
+      await page.emulateMedia({ colorScheme: 'dark' })
+      const previewColors = await previewPanel.evaluate((element) => {
+        const style = getComputedStyle(element)
+        return { foreground: style.color, background: style.backgroundColor }
+      })
+      expect(contrastRatio(previewColors.foreground, previewColors.background)).toBeGreaterThanOrEqual(4.5)
+      const createButton = page.getByRole('button', { name: 'Create configuration' })
+      await tabTo(page, createButton)
+      await expect(createButton).toBeFocused()
+      expect(await createButton.evaluate((element) => element.matches(':focus-visible'))).toBe(true)
+      expect(await createButton.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe('none')
+      await page.screenshot({ path: testInfo.outputPath(`package-proposal-${size.width}x${size.height}.png`) })
       await page.keyboard.press('Enter')
       await expect(page.getByText('.devcontrol.toml created')).toBeVisible()
     } finally {
