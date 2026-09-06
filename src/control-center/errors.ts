@@ -55,6 +55,22 @@ export function configurationError(
   })
 }
 
+export function packageJsonDetectionError(
+  code: string,
+  fieldPath: string | undefined,
+  message: string,
+  nextAction: string,
+  projectId?: string
+): ControlCenterError {
+  return new ControlCenterError({
+    code,
+    resource: projectId ? { kind: 'project', id: projectId } : { kind: 'project' },
+    ...(fieldPath === undefined ? {} : { fieldPath }),
+    message,
+    nextAction
+  })
+}
+
 export function projectConfigurationAlreadyExists(projectId?: string): ControlCenterError {
   return configurationError(
     'PROJECT_CONFIGURATION_ALREADY_EXISTS',

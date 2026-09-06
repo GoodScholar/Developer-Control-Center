@@ -33,6 +33,27 @@ export interface DevelopmentServiceDraft {
   windows?: PlatformOverrideDraft
 }
 
+export interface PackageJsonDetectionEvidence {
+  kind: 'package_json'
+  relativePath: 'package.json'
+  scriptName: string
+}
+
+export interface PackageJsonDetectionCandidate {
+  candidateId: string
+  evidence: PackageJsonDetectionEvidence
+  draft: DevelopmentServiceDraft
+}
+
+export interface PackageJsonDetectionProposal {
+  projectId: string
+  candidates: PackageJsonDetectionCandidate[]
+}
+
+export type DetectionProposalResult =
+  | { kind: 'proposal'; proposal: PackageJsonDetectionProposal }
+  | { kind: 'none'; reason: 'configuration-exists' | 'package-json-missing' | 'no-candidates' }
+
 export interface ProjectConfigurationDraft {
   services: DevelopmentServiceDraft[]
 }
