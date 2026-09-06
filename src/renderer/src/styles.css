@@ -252,7 +252,8 @@ h3 {
   padding: clamp(1.5rem, 4vw, 2.5rem);
 }
 
-form {
+form,
+.service-configuration-fields {
   display: grid;
   gap: 0.65rem;
 }
@@ -285,7 +286,8 @@ input[type="checkbox"] {
   accent-color: light-dark(#245d55, #8cc9bd);
 }
 
-form > p {
+form > p,
+.service-configuration-fields > p {
   margin-bottom: 0.5rem;
   font-size: 0.875rem;
 }

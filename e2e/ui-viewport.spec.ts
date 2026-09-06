@@ -50,6 +50,21 @@ for (const size of [{ width: 1100, height: 720 }, { width: 760, height: 520 }]) 
       const program = page.getByLabel('Program')
       await tabTo(page, program)
       await page.keyboard.type('pnpm')
+      const formStyles = await program.evaluate((element) => {
+        const fields = element.closest('.service-configuration-fields')
+        const help = fields?.querySelector('p')
+        if (!fields || !help) throw new Error('Service configuration fields were not found.')
+        return {
+          display: getComputedStyle(fields).display,
+          gap: getComputedStyle(fields).gap,
+          helpFontSize: getComputedStyle(help).fontSize,
+          helpMarginBottom: getComputedStyle(help).marginBottom
+        }
+      })
+      expect(formStyles.display).toBe('grid')
+      expect(Number.parseFloat(formStyles.gap)).toBeGreaterThan(0)
+      expect(formStyles.helpFontSize).toBe('14px')
+      expect(formStyles.helpMarginBottom).toBe('8px')
       await page.emulateMedia({ colorScheme: 'dark' })
       const darkInputColors = await program.evaluate((element) => {
         const panel = element.closest('.configuration-layout > section')
